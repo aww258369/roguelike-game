@@ -1156,32 +1156,49 @@ class GameOver:
         overlay.fill((0, 0, 0, 200))
         surface.blit(overlay, (0, 0))
 
+        # 标题
         title = font_huge.render("💀 轮回终结", True, (255, 80, 80))
-        surface.blit(title, (W//2 - title.get_width()//2, H//2 - 150))
+        surface.blit(title, (W//2 - title.get_width()//2, H//2 - 180))
 
         if self.player:
-            texts = [
-                f"存活至：第 {self.wave} 关",
-                f"等级：{self.player.level}",
-                f"击杀：{self.player.kills}",
-                f"天赋：{len(self.player.talents_taken)} 个",
-                f"伤害输出：{self.player.total_dmg_dealt:.0f}",
+            # 统计数据卡片
+            card_w, card_h = 360, 200
+            card_x, card_y = W//2 - card_w//2, H//2 - 100
+            card = pygame.Surface((card_w, card_h), pygame.SRCALPHA)
+            card.fill((15, 8, 30, 220))
+            pygame.draw.rect(card, (80, 60, 120, 150), card.get_rect(), 2, 8)
+            surface.blit(card, (card_x, card_y))
+
+            stats = [
+                ("存活至", f"第 {self.wave} 关"),
+                ("等级", f"{self.player.level}"),
+                ("击杀", f"{self.player.kills}"),
+                ("天赋", f"{len(self.player.talents_taken)} 个"),
+                ("伤害", f"{self.player.total_dmg_dealt:.0f}"),
             ]
-            for i, t in enumerate(texts):
-                txt = font_med.render(t, True, C['text'])
-                surface.blit(txt, (W//2 - txt.get_width()//2, H//2 - 30 + i*45))
+            for i, (label, val) in enumerate(stats):
+                row = i // 2
+                col = i % 2
+                lx = card_x + 30 + col * (card_w//2)
+                ly = card_y + 16 + row * 56
+                lbl = font_small.render(label, True, C['text_dim'])
+                surface.blit(lbl, (lx, ly))
+                val_txt = font_med.render(val, True, C['gold'] if i == 0 else C['text'])
+                surface.blit(val_txt, (lx, ly + 22))
 
         if self.timer > 60:
+            # 按钮区域
+            btn_y = H//2 + 130
             # 再来一次
-            r1 = pygame.Rect(W//2 - 130, H//2 + 150, 120, 50)
-            pygame.draw.rect(surface, (60, 40, 80), r1)
-            pygame.draw.rect(surface, C['gold'], r1, 2)
+            r1 = pygame.Rect(W//2 - 130, btn_y, 120, 50)
+            pygame.draw.rect(surface, (60, 40, 80), r1, border_radius=6)
+            pygame.draw.rect(surface, C['gold'], r1, 2, border_radius=6)
             retry = font_med.render("再来一次", True, C['gold'])
             surface.blit(retry, (r1.centerx - retry.get_width()//2, r1.centery - retry.get_height()//2))
             # 返回主菜单
-            r2 = pygame.Rect(W//2 + 10, H//2 + 150, 120, 50)
-            pygame.draw.rect(surface, (40, 30, 60), r2)
-            pygame.draw.rect(surface, C['gold'], r2, 2)
+            r2 = pygame.Rect(W//2 + 10, btn_y, 120, 50)
+            pygame.draw.rect(surface, (40, 30, 60), r2, border_radius=6)
+            pygame.draw.rect(surface, C['gold'], r2, 2, border_radius=6)
             menu = font_med.render("返回菜单", True, C['gold'])
             surface.blit(menu, (r2.centerx - menu.get_width()//2, r2.centery - menu.get_height()//2))
 
@@ -1252,123 +1269,131 @@ tier_colors_b = {1: (100, 150, 255), 2: (140, 80, 255), 3: (255, 150, 50), 4: (2
 class Bestiary:
     def __init__(self):
         self.active = False
-        self.tab = 0  # 0=天赋, 1=怪物, 2=Boss
+        self.tab = 0
         self.scroll = 0
         self.timer = 0
+        self.pw, self.ph = 500, 480
+        self.px, self.py = W//2 - self.pw//2, H//2 - self.ph//2
+        self.item_h = 34
+        self.visible = 9
+        self.fnt = pygame.font.Font(_zh_font_path, 20) if _zh_font_path else pygame.font.SysFont('microsoftyahei,tahoma', 20)
+        self.fnt_tip = pygame.font.Font(_zh_font_path, 18) if _zh_font_path else pygame.font.SysFont('microsoftyahei,tahoma', 18)
 
     def handle_event(self, event):
+        if not self.active: return False
+        px, py = self.px, self.py
         if event.type == pygame.KEYDOWN:
             if event.key in (pygame.K_ESCAPE, pygame.K_BACKSPACE):
-                self.active = False; return
+                self.active = False; return True
             if event.key in (pygame.K_LEFT, pygame.K_a):
-                self.tab = (self.tab - 1) % 3; self.scroll = 0
+                self.tab = (self.tab - 1) % 3; self.scroll = 0; return True
             if event.key in (pygame.K_RIGHT, pygame.K_d):
-                self.tab = (self.tab + 1) % 3; self.scroll = 0
+                self.tab = (self.tab + 1) % 3; self.scroll = 0; return True
             if event.key == pygame.K_DOWN:
-                self.scroll = min(self.scroll + 1, max(0, self._max_scroll()))
+                self.scroll = min(self.scroll + 1, self._max_scroll()); return True
             if event.key == pygame.K_UP:
-                self.scroll = max(0, self.scroll - 1)
+                self.scroll = max(0, self.scroll - 1); return True
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            # 标签切换
-            for i in range(3):
-                if pygame.Rect(W//2-180 + i*120, 85, 110, 35).collidepoint(event.pos):
-                    self.tab = i; self.scroll = 0; return
+            mx, my = event.pos
             # 关闭
-            if pygame.Rect(W-80, 15, 60, 30).collidepoint(event.pos):
-                self.active = False; return
+            if pygame.Rect(px + self.pw - 36, py + 8, 28, 26).collidepoint(mx, my):
+                self.active = False; return True
+            # 标签
+            for i, tn in enumerate(['天赋', '怪物', 'Boss']):
+                tx = px + 20 + i * (self.pw - 40) // 3
+                tw = (self.pw - 40) // 3
+                if pygame.Rect(tx, py + 42, tw, 28).collidepoint(mx, my):
+                    self.tab = i; self.scroll = 0; return True
+            # 列表点击
+            items = self._items()
+            for i, item in enumerate(items):
+                y = self._item_y(i, py)
+                if y < py + 78 or y > py + self.ph - 20:
+                    continue
+                if pygame.Rect(px + 12, y, self.pw - 24, self.item_h - 2).collidepoint(mx, my):
+                    return True
+        # 滚轮
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button in (4, 5):
+            self.scroll = max(0, self.scroll - 1) if event.button == 4 else min(self.scroll + 1, self._max_scroll())
+            return True
+        return False
+
+    def _items(self):
+        if self.tab == 0: return [(t[1], t[2], tier_names_b.get(t[3], ''), tier_colors_b.get(t[3], (200,200,200))) for t in BESTIARY_TALENTS]
+        if self.tab == 1: return [(e[1], e[2], '', e[3]) for e in BESTIARY_ENEMIES]
+        return [(b[1], b[2], '', b[3]) for b in BESTIARY_BOSSES]
 
     def _max_scroll(self):
-        if self.tab == 0: return max(0, len(BESTIARY_TALENTS) - 7)
-        if self.tab == 1: return max(0, len(BESTIARY_ENEMIES) - 5)
-        return max(0, len(BESTIARY_BOSSES) - 4)
+        return max(0, len(self._items()) - self.visible)
+
+    def _item_y(self, idx, panel_top):
+        return panel_top + 78 + (idx - self.scroll) * self.item_h
 
     def update(self):
         self.timer += 1
 
     def draw(self, surface):
         if not self.active: return
+        px, py = self.px, self.py
+
+        # 遮罩
         overlay = pygame.Surface((W, H), pygame.SRCALPHA)
-        overlay.fill((5, 2, 15, 240))
+        overlay.fill((5, 2, 15, 230))
         surface.blit(overlay, (0, 0))
 
-        # 标题
-        title = font_large.render("📖 图鉴系统", True, C['gold'])
-        surface.blit(title, (W//2 - title.get_width()//2, 20))
+        # 面板
+        panel = pygame.Surface((self.pw, self.ph), pygame.SRCALPHA)
+        panel.fill((8, 4, 18, 240))
+        pygame.draw.rect(panel, (80, 60, 120, 200), panel.get_rect(), 2, 8)
+        surface.blit(panel, (px, py))
 
-        # 关闭按钮
-        close = font_small.render("✕ 关闭", True, (150,140,170))
-        pygame.draw.rect(surface, (40,30,55), (W-85, 12, 70, 35), border_radius=4)
-        surface.blit(close, (W-75, 18))
+        # 标题
+        surface.blit(self.fnt.render("📖 图鉴", True, C['gold']), (px + 14, py + 10))
+        surface.blit(self.fnt.render("✕", True, (180, 140, 160)), (px + self.pw - 30, py + 10))
 
         # 标签
-        tab_names = ['天赋', '怪物', 'Boss']
-        for i, tn in enumerate(tab_names):
-            tx = W//2 - 180 + i*120
-            rect = pygame.Rect(tx, 85, 110, 35)
+        for i, tn in enumerate(['天赋', '怪物', 'Boss']):
+            tx = px + 20 + i * (self.pw - 40) // 3
+            tw = (self.pw - 40) // 3
             sel = i == self.tab
-            pygame.draw.rect(surface, (50,35,70) if sel else (25,18,40), rect, border_radius=5)
-            if sel: pygame.draw.rect(surface, C['gold'], rect, 2, border_radius=5)
-            t = font_med.render(tn, True, C['gold'] if sel else C['text_dim'])
-            surface.blit(t, (rect.centerx - t.get_width()//2, rect.centery - t.get_height()//2))
+            s2 = pygame.Surface((tw, 28), pygame.SRCALPHA)
+            s2.fill((50, 35, 70, 200) if sel else (25, 18, 40, 180))
+            if sel: pygame.draw.rect(s2, (*C['gold'][:3], 200), s2.get_rect(), 1, 5)
+            surface.blit(s2, (tx, py + 42))
+            t2 = self.fnt.render(tn, True, C['gold'] if sel else C['text_dim'])
+            surface.blit(t2, (tx + tw//2 - t2.get_width()//2, py + 47))
 
-        # 内容
-        yy = 140 - self.scroll * 70
+        cx, cy = px + 12, py + 78
+        list_w, list_h = self.pw - 24, self.ph - 108
 
-        if self.tab == 0:  # 天赋
-            for i, t in enumerate(BESTIARY_TALENTS):
-                tid, name, desc, tier = t
-                y = yy + i * 68
-                if y < 130 or y > H-20: continue
-                c = tier_colors_b.get(tier, (200,200,200))
-                tn = tier_names_b.get(tier, '')
-                # 卡片
-                pygame.draw.rect(surface, (22,15,38), (80, y, W-160, 60), border_radius=6)
-                pygame.draw.rect(surface, (*c, 60), (80, y, W-160, 60), 1, border_radius=6)
-                # 图标
-                pygame.draw.circle(surface, c, (115, y+30), 18)
-                pygame.draw.circle(surface, (255,255,255), (115, y+30), 14)
-                ic = font_med.render(tid[:2].upper(), True, c)
-                surface.blit(ic, (115-ic.get_width()//2, y+22))
-                # 名称
-                nm = font_med.render(name, True, (240,240,255))
-                surface.blit(nm, (145, y+8))
-                # 描述
-                ds = font_small.render(desc, True, C['text_dim'])
-                surface.blit(ds, (145, y+34))
-                # 稀有度标签
-                rt = font_small.render(tn, True, c)
-                surface.blit(rt, (W-140, y+16))
+        items = self._items()
+        for i, item in enumerate(items):
+            name, desc, extra, color = item
+            y = self._item_y(i, py)
+            if y < cy - self.item_h or y > cy + list_h:
+                continue
+            bg2 = pygame.Surface((list_w, self.item_h - 2), pygame.SRCALPHA)
+            bg2.fill((30, 20, 48, 200))
+            pygame.draw.rect(bg2, (*color[:3], 60) if isinstance(color, tuple) else (80,60,120,60), bg2.get_rect(), 1, 4)
+            surface.blit(bg2, (cx, y))
+            if isinstance(color, tuple):
+                pygame.draw.circle(surface, color, (cx + 12, y + self.item_h//2), 5)
+            surface.blit(self.fnt.render(name, True, (230, 230, 255)), (cx + 24, y + 7))
+            if extra:
+                et = self.fnt.render(extra, True, color)
+                surface.blit(et, (cx + list_w - et.get_width() - 8, y + 7))
 
-        elif self.tab == 1:  # 怪物
-            for i, e in enumerate(BESTIARY_ENEMIES):
-                eid, name, desc, color = e
-                y = yy + i * 68
-                if y < 130 or y > H-20: continue
-                pygame.draw.rect(surface, (22,15,38), (80, y, W-160, 60), border_radius=6)
-                pygame.draw.rect(surface, (*color[:3], 60), (80, y, W-160, 60), 1, border_radius=6)
-                pygame.draw.circle(surface, color, (115, y+30), 16)
-                pygame.draw.circle(surface, (255,255,255,80), (115, y+30), 8)
-                nm = font_med.render(name, True, (240,240,255))
-                surface.blit(nm, (145, y+12))
-                ds = font_small.render(desc, True, C['text_dim'])
-                surface.blit(ds, (145, y+34))
-
-        else:  # Boss
-            for i, b in enumerate(BESTIARY_BOSSES):
-                bid, name, desc, color = b
-                y = yy + i * 68
-                if y < 130 or y > H-20: continue
-                pygame.draw.rect(surface, (22,15,38), (80, y, W-160, 60), border_radius=6)
-                pygame.draw.rect(surface, (*color[:3], 60), (80, y, W-160, 60), 1, border_radius=6)
-                pygame.draw.circle(surface, color, (115, y+30), 16)
-                nm = font_med.render(name, True, (240,240,255))
-                surface.blit(nm, (145, y+12))
-                ds = font_small.render(desc, True, C['text_dim'])
-                surface.blit(ds, (145, y+34))
+        # 滚动条
+        if self._max_scroll() > 0:
+            bar_h = list_h * self.visible / max(1, len(items))
+            bar_y = cy + (self.scroll / self._max_scroll()) * (list_h - bar_h)
+            bar = pygame.Surface((4, int(bar_h)), pygame.SRCALPHA)
+            bar.fill((120, 100, 160, 150))
+            surface.blit(bar, (px + self.pw - 11, int(bar_y)))
 
         # 底部提示
-        footer = font_small.render("← → 切换标签 · ↑↓ 滚动 · ESC 关闭", True, (70,60,90))
-        surface.blit(footer, (W//2 - footer.get_width()//2, H-30))
+        surface.blit(self.fnt_tip.render("← → 标签 · ↑↓ 滚轮 · ESC 关闭", True, (70, 60, 90)),
+                     (px + 14, py + self.ph - 22))
 
 
 # ──────────────────────────────────────
@@ -1637,10 +1662,27 @@ class CheatMenu:
         self.visible = 9
         self.hovered_talent = -1
         self.hovered_talent_desc = ""
+        self.dragging_scroll = False
+        self.drag_start_y = 0
+        self.drag_start_scroll = 0
         # 作弊菜单专用小字体
         self.fnt = pygame.font.Font(_zh_font_path, 20) if _zh_font_path else pygame.font.SysFont('microsoftyahei,tahoma', 20)
         self.fnt_bold = pygame.font.Font(_zh_font_path, 22) if _zh_font_path else pygame.font.SysFont('microsoftyahei,tahoma', 22)
         self.fnt_tip = pygame.font.Font(_zh_font_path, 18) if _zh_font_path else pygame.font.SysFont('microsoftyahei,tahoma', 18)
+
+    def _scrollbar_rects(self):
+        """返回 (滚动条竖轨Rect, 滑块Rect)"""
+        px, py = 15, 35
+        cx, cy = px + 12, py + 78
+        list_w, list_h = self.panel_w - 24, self.panel_h - 104
+        max_s = self._max_scroll()
+        if max_s <= 0: return None, None
+        count = len(TALENTS) if self.tab == 0 else 100
+        bar_h = max(20, list_h * self.visible / count)
+        bar_y = cy + (self.scroll / max_s) * (list_h - bar_h)
+        track = pygame.Rect(px + self.panel_w - 12, cy, 6, list_h)
+        slider = pygame.Rect(px + self.panel_w - 12, int(bar_y), 6, int(bar_h))
+        return track, slider
 
     def toggle(self):
         self.open = not self.open
@@ -1669,6 +1711,28 @@ class CheatMenu:
                         self.hovered_talent = i
                         self.hovered_talent_desc = t[2]
 
+        # 滚动条拖拽 — 鼠标移动
+        if event.type == pygame.MOUSEMOTION and self.dragging_scroll and self.open:
+            my = event.pos[1]
+            max_s = self._max_scroll()
+            if max_s > 0:
+                px2, py2 = 15, 35
+                cx, cy = px2 + 12, py2 + 78
+                list_h = self.panel_h - 104
+                count = len(TALENTS) if self.tab == 0 else 100
+                bar_h = max(20, list_h * self.visible / count)
+                track_h = list_h - bar_h
+                if track_h > 0:
+                    ratio = (my - cy) / track_h
+                    self.scroll = int(ratio * max_s)
+                    self.scroll = clamp(self.scroll, 0, max_s)
+            return True
+
+        # 滚动条拖拽 — 结束
+        if event.type == pygame.MOUSEBUTTONUP and event.button == 1 and self.dragging_scroll:
+            self.dragging_scroll = False
+            return True
+
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             pos = event.pos
             if self.btn_rect.collidepoint(pos):
@@ -1676,6 +1740,13 @@ class CheatMenu:
                 return True
             if not self.open:
                 return False
+
+            # 滚动条拖拽 — 开始
+            track_rect, slider_rect = self._scrollbar_rects()
+            if slider_rect and slider_rect.collidepoint(pos):
+                self.dragging_scroll = True
+                self.drag_start_y = pos[1]
+                return True
 
             # 关闭
             if pygame.Rect(px + self.panel_w - 34, py + 6, 26, 24).collidepoint(pos):
@@ -1706,7 +1777,6 @@ class CheatMenu:
                     if y < py + 76 or y > py + self.panel_h - 20:
                         continue
                     if pygame.Rect(px + 12, y, self.panel_w - 24, self.item_h - 2).collidepoint(pos):
-                        # 减1因为 start_next_wave 会 +1
                         game.wave_mgr.wave = w - 1
                         game.wave_mgr.between_waves = True
                         game.wave_mgr.wave_timer = 30
@@ -1822,15 +1892,19 @@ class CheatMenu:
                 if is_cur:
                     surface.blit(self.fnt.render("◀", True, C['gold']), (cx + list_w - 18, y + 7))
 
-        # 滚动条
-        if self._max_scroll() > 0:
-            bar_h = list_h * self.visible / (len(TALENTS) if self.tab == 0 else 100)
-            bar_y = cy + (self.scroll / self._max_scroll()) * (list_h - bar_h)
-            bar = pygame.Surface((4, int(bar_h)), pygame.SRCALPHA)
-            bar.fill((120, 100, 160, 150))
-            surface.blit(bar, (px + self.panel_w - 11, int(bar_y)))
+        # 滚动条（可拖拽）
+        track_rect, slider_rect = self._scrollbar_rects()
+        if track_rect and slider_rect:
+            tr = pygame.Surface((4, track_rect.h), pygame.SRCALPHA)
+            tr.fill((40, 30, 55, 100))
+            surface.blit(tr, (px + self.panel_w - 11, track_rect.y))
+            bar_color = (180, 160, 220, 200) if self.dragging_scroll else (120, 100, 160, 150)
+            bar = pygame.Surface((6, slider_rect.h), pygame.SRCALPHA)
+            bar.fill(bar_color)
+            pygame.draw.rect(bar, (200, 180, 240, 100), bar.get_rect(), 1, 4)
+            surface.blit(bar, (px + self.panel_w - 12, slider_rect.y))
 
-        surface.blit(self.fnt_tip.render("滚轮 · F1 开关", True, (70, 60, 90)),
+        surface.blit(self.fnt_tip.render("滚轮/拖拽 · F1 开关", True, (70, 60, 90)),
                      (px + 12, py + self.panel_h - 22))
 
 
