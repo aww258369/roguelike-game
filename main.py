@@ -96,6 +96,43 @@ C = {
 }
 
 # ──────────────────────────────────────
+#  存档 & 难度配置
+# ──────────────────────────────────────
+SAVE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'save.json')
+
+def load_save():
+    try:
+        with open(SAVE_FILE, 'r', encoding='utf-8') as f: return json.load(f)
+    except: return {'gold': 0, 'upgrades': {}, 'high_wave': 0}
+
+def save_save(data):
+    with open(SAVE_FILE, 'w', encoding='utf-8') as f: json.dump(data, f)
+
+DIFFICULTIES = {
+    '简单': {'scale': 0.6, 'gold_mul': 0.8, 'desc': '怪物弱 60%, 金币 ×0.8'},
+    '普通': {'scale': 1.0, 'gold_mul': 1.0, 'desc': '标准难度'},
+    '困难': {'scale': 1.5, 'gold_mul': 1.5, 'desc': '怪物强 50%, 金币 ×1.5'},
+    '地狱': {'scale': 2.2, 'gold_mul': 2.5, 'desc': '怪物强 120%, 金币 ×2.5'},
+}
+_current_diff = '普通'
+
+UPGRADE_CONFIG = {
+    'max_hp':    {'name': '生命上限',  'cost_base': 100, 'cost_step': 1.5, 'max_lv': 20, 'per_lv': 25},
+    'dmg':       {'name': '攻击力',    'cost_base': 80,  'cost_step': 1.6, 'max_lv': 20, 'per_lv': 3},
+    'atk_speed': {'name': '攻速',      'cost_base': 120, 'cost_step': 1.5, 'max_lv': 15, 'per_lv': -1.5},
+    'move_speed':{'name': '移速',      'cost_base': 60,  'cost_step': 1.4, 'max_lv': 10, 'per_lv': 0.3},
+    'armor':     {'name': '护甲',      'cost_base': 150, 'cost_step': 1.6, 'max_lv': 15, 'per_lv': 0.15},
+}
+
+def upgrade_cost(key, level):
+    cfg = UPGRADE_CONFIG[key]
+    return int(cfg['cost_base'] * (cfg['cost_step'] ** level))
+
+def get_upgrade_level(key):
+    d = load_save()
+    return d['upgrades'].get(key, 0)
+
+# ──────────────────────────────────────
 #  工具函数
 # ──────────────────────────────────────
 def dist(a, b):
@@ -205,22 +242,26 @@ def talent_weight(tier):
 #  玩家
 # ──────────────────────────────────────
 class Player:
-    def __init__(self):
+    def __init__(self, difficulty='普通'):
         self.x, self.y = WORLD_CENTER
         self.radius = 18
         self.vx = self.vy = 0
+        self.difficulty = difficulty
 
         # 基础属性
         self.max_hp = 100
         self.hp = self.max_hp
         self.base_dmg = 12
         self.dmg = self.base_dmg
-        self.base_atk_speed = 30    # 帧间隔
+        self.base_atk_speed = 30
         self.atk_speed = self.base_atk_speed
         self.move_speed = 4.0
         self.atk_range = 420
-        self.armor = 1.0               # 伤害 = 原始 / armor
+        self.armor = 1.0
         self.regen = 0
+
+        # 应用存档升级
+        self._apply_upgrades()
 
         # 特殊属性
         self.multi = 1                 # 子弹数量
@@ -251,6 +292,27 @@ class Player:
 
         # inv
         self.inv_timer = 0
+
+    def _apply_upgrades(self):
+        """从存档应用升级到属性"""
+        try:
+            d = load_save()
+            ups = d.get('upgrades', {})
+            for key, lv in ups.items():
+                if key in UPGRADE_CONFIG and lv > 0:
+                    cfg = UPGRADE_CONFIG[key]
+                    val = lv * cfg['per_lv']
+                    if key == 'max_hp':
+                        self._set_max_hp(self.max_hp + val)
+                    elif key == 'dmg':
+                        self.dmg = self.base_dmg + val
+                    elif key == 'atk_speed':
+                        self.atk_speed = max(5, self.base_atk_speed + val)
+                    elif key == 'move_speed':
+                        self.move_speed = 4.0 + val
+                    elif key == 'armor':
+                        self.armor = 1.0 + val
+        except: pass
 
     def _set_max_hp(self, val):
         ratio = self.hp / self.max_hp
@@ -429,6 +491,38 @@ class Bullet:
         self.hit.add(id(enemy))
 
 # ──────────────────────────────────────
+#  敌人子弹
+# ──────────────────────────────────────
+class EnemyBullet:
+    def __init__(self, x, y, tx, ty, dmg, speed=4, radius=6, color=(255, 80, 80)):
+        self.x, self.y = x, y
+        self.dmg = dmg
+        self.radius = radius
+        self.color = color
+        self.life = 200
+        a = angle((x, y), (tx, ty))
+        self.vx = math.cos(a) * speed
+        self.vy = math.sin(a) * speed
+
+    @property
+    def dead(self):
+        return self.life <= 0
+
+    def update(self):
+        self.x += self.vx
+        self.y += self.vy
+        self.life -= 1
+
+    def draw(self, surface, camera):
+        sx, sy = int(self.x - camera.x), int(self.y - camera.y)
+        glow = pygame.Surface((int(self.radius*4), int(self.radius*4)), pygame.SRCALPHA)
+        c = self.color
+        pygame.draw.circle(glow, (*c[:3], 50), (int(self.radius*2), int(self.radius*2)), int(self.radius*2))
+        surface.blit(glow, (sx - self.radius*2, sy - self.radius*2))
+        pygame.draw.circle(surface, c, (sx, sy), self.radius)
+        pygame.draw.circle(surface, (255, 200, 200), (sx, sy), self.radius//2)
+
+# ──────────────────────────────────────
 #  XP 球
 # ──────────────────────────────────────
 class XPOrb:
@@ -586,17 +680,16 @@ class RangedEnemy(Enemy):
     def __init__(self, x, y, wave_scale=1.0):
         super().__init__('ranged', x, y, wave_scale)
         self.preferred_dist = 250
+        self.shoot_timer = 120
 
     def update(self, px, py):
         super().update(px, py)
         d = dist((self.x, self.y), (px, py))
         if d < self.preferred_dist * 0.8:
-            # 后退
             a = angle((px, py), (self.x, self.y))
             self.x += math.cos(a) * self.speed
             self.y += math.sin(a) * self.speed
         elif d > self.preferred_dist * 1.3:
-            # 靠近
             a = angle((self.x, self.y), (px, py))
             self.x += math.cos(a) * self.speed * 0.5
             self.y += math.sin(a) * self.speed * 0.5
@@ -646,6 +739,9 @@ class Boss:
         self.charge_target = None
         self.charging = False
         self.charge_speed = 0
+        self.shoot_timer = 0
+        self.summon_timer = 90
+        self.aoe_timer = 0
 
     @property
     def speed(self):
@@ -669,45 +765,76 @@ class Boss:
             return True
         return False
 
-    def update(self, px, py):
+    def update(self, px, py, enemy_bullets=None, enemies=None):
         if self.stun_timer > 0: self.stun_timer -= 1
         if self.slow_timer > 0: self.slow_timer -= 1
         if self.burn_timer > 0:
-            self.burn_timer -= 1
-            self.hp -= 2
-            if self.hp <= 0:
-                self.dead = True
+            self.burn_timer -= 1; self.hp -= 2
+            if self.hp <= 0: self.dead = True
 
-        if self.atk_timer > 0: self.atk_timer -= 1
-        if self.special_timer > 0: self.special_timer -= 1
+        self.atk_timer = max(0, self.atk_timer - 1)
+        self.special_timer = max(0, self.special_timer - 1)
+        self.shoot_timer = max(0, self.shoot_timer - 1)
+        self.summon_timer = max(0, self.summon_timer - 1)
+        self.aoe_timer = max(0, self.aoe_timer - 1)
 
-        # 冲刺攻击
+        # 冲刺
         if self.charging:
             a = angle((self.x, self.y), (px, py))
             self.x += math.cos(a) * self.charge_speed
             self.y += math.sin(a) * self.charge_speed
-            d = dist((self.x, self.y), (px, py))
-            if d < self.radius + 25:
+            if dist((self.x, self.y), (px, py)) < self.radius + 25:
                 self.charging = False
                 self.special_timer = self.special_cooldown
             return
 
         # 靠近玩家
         a = angle((self.x, self.y), (px, py))
-        self.x += math.cos(a) * self.speed
-        self.y += math.sin(a) * self.speed
+        d = dist((self.x, self.y), (px, py))
+        if d > 250:
+            self.x += math.cos(a) * self.speed
+            self.y += math.sin(a) * self.speed
 
-        # BOSS特殊技能
-        if self.special_timer <= 0 and not self.charging:
-            d = dist((self.x, self.y), (px, py))
-            if d < 500:
-                if random.random() < 0.4:
-                    # 冲刺
-                    self.charging = True
-                    self.charge_speed = 8 + self.phase * 2
-                else:
-                    # AOE震波
-                    self.special_timer = self.special_cooldown
+        # === 技能系统 ===
+        # 1. 射击（远程弹幕）
+        if self.shoot_timer <= 0 and enemy_bullets is not None and d < 600:
+            for _ in range(3 if self.is_mini else 5 + self.phase):
+                spread = random.uniform(-0.3, 0.3)
+                a2 = angle((self.x, self.y), (px, py)) + spread
+                spd = 5 + random.random() * 3
+                eb = EnemyBullet(self.x, self.y, px + random.uniform(-30,30), py + random.uniform(-30,30), int(self.dmg * 0.5), spd, 7)
+                eb.vx = math.cos(a2) * spd
+                eb.vy = math.sin(a2) * spd
+                enemy_bullets.append(eb)
+            self.shoot_timer = 120 - self.phase * 20
+
+        # 2. 召唤小怪
+        if self.summon_timer <= 0 and enemies is not None:
+            if not self.is_mini and self.phase >= 2:
+                for _ in range(3):
+                    sx = self.x + random.uniform(-100, 100)
+                    sy = self.y + random.uniform(-100, 100)
+                    e = Enemy('normal', sx, sy, max(1, self.wave))
+                    enemies.append(e)
+                self.summon_timer = 300
+            elif self.is_mini:
+                self.summon_timer = 60
+
+        # 3. AOE震波
+        if self.special_timer <= 0:
+            roll = random.random()
+            if roll < 0.3 and not self.charging:
+                self.charging = True
+                self.charge_speed = 8 + self.phase * 3
+            elif roll < 0.6 and not self.is_mini:
+                self.aoe_timer = 50  # AOE 伤害回调
+                self.special_timer = self.special_cooldown
+                self.x += math.cos(a) * 20
+                self.y += math.sin(a) * 20
+
+        # AOE 伤害
+        if self.aoe_timer > 0 and self.aoe_timer % 10 == 0 and d < self.radius + 100:
+            pass  # 伤害在外层循环处理
 
     def draw(self, surface, camera):
         sx, sy = int(self.x - camera.x), int(self.y - camera.y)
@@ -882,7 +1009,7 @@ class WaveManager:
 # ──────────────────────────────────────
 #  UI 绘制
 # ──────────────────────────────────────
-def draw_ui(surface, player, wave_mgr, orbs, vx=0, vy=0):
+def draw_ui(surface, player, wave_mgr, orbs, gold=0, vx=0, vy=0):
     # ── HUD 左下 ──
     mx, my = 20, H - 20
 
@@ -899,8 +1026,12 @@ def draw_ui(surface, player, wave_mgr, orbs, vx=0, vy=0):
     hp_txt = font_small.render(f"{player.hp:.0f}/{player.max_hp:.0f}", True, (255,255,255))
     surface.blit(hp_txt, (hp_x + hp_w//2 - hp_txt.get_width()//2, hp_y + 1))
 
+    # 金币
+    gold_txt = font_small.render(f"💰 {gold}", True, C['gold'])
+    surface.blit(gold_txt, (hp_x, hp_y + 24))
+
     # XP 条
-    xp_x, xp_y = hp_x, hp_y + 22
+    xp_x, xp_y = hp_x, hp_y + 46
     xp_w, xp_h = hp_w, 10
     pygame.draw.rect(surface, C['xp_bg'], (xp_x, xp_y, xp_w, xp_h))
     pygame.draw.rect(surface, C['xp'], (xp_x, xp_y, int(xp_w * player.xp_percent), xp_h))
@@ -1509,6 +1640,192 @@ class VictoryScreen:
 
 
 # ──────────────────────────────────────
+#  商店界面
+# ──────────────────────────────────────
+class ShopScreen:
+    def __init__(self):
+        self.active = False
+        self.saved = load_save()
+        self.timer = 0
+
+    def open(self):
+        self.active = True
+        self.saved = load_save()
+        self.timer = 0
+
+    def handle_event(self, event):
+        if not self.active: return False
+        if event.type == pygame.KEYDOWN:
+            if event.key in (pygame.K_ESCAPE, pygame.K_BACKSPACE):
+                self.active = False; return True
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            # 关闭
+            if pygame.Rect(W-70, 12, 55, 30).collidepoint(event.pos):
+                self.active = False; return True
+            # 升级按钮
+            keys = list(UPGRADE_CONFIG.keys())
+            for i, key in enumerate(keys):
+                cfg = UPGRADE_CONFIG[key]
+                lv = self.saved['upgrades'].get(key, 0)
+                if lv >= cfg['max_lv']: continue
+                cost = upgrade_cost(key, lv)
+                btn = pygame.Rect(W//2 + 80, 125 + i*62, 120, 36)
+                if btn.collidepoint(event.pos) and self.saved['gold'] >= cost:
+                    self.saved['gold'] -= cost
+                    self.saved['upgrades'][key] = lv + 1
+                    save_save(self.saved)
+                    return True
+        return False
+
+    def update(self):
+        if self.active: self.timer += 1
+
+    def draw(self, surface):
+        if not self.active: return
+        overlay = pygame.Surface((W, H), pygame.SRCALPHA)
+        overlay.fill((5, 2, 15, 240))
+        surface.blit(overlay, (0, 0))
+
+        # 面板
+        pw, ph = 600, 460
+        px, py = W//2 - pw//2, H//2 - ph//2
+        panel = pygame.Surface((pw, ph), pygame.SRCALPHA)
+        panel.fill((8, 4, 18, 240))
+        pygame.draw.rect(panel, (80, 60, 120, 200), panel.get_rect(), 2, 8)
+        surface.blit(panel, (px, py))
+
+        title = font_large.render("🏪 商店", True, C['gold'])
+        surface.blit(title, (px + pw//2 - title.get_width()//2, py + 15))
+        pygame.draw.rect(surface, (40,30,55), (W-75, 10, 65, 34), border_radius=4)
+        surface.blit(font_small.render("✕ 关闭", True, (150,140,170)), (W-70, 16))
+
+        # 金币显示
+        gold_txt = font_med.render(f"💰 {self.saved['gold']} 金币", True, C['gold'])
+        surface.blit(gold_txt, (px + 30, py + 70))
+        high_txt = font_small.render(f"最高波次: 第 {self.saved.get('high_wave',0)} 关", True, C['text_dim'])
+        surface.blit(high_txt, (px + 30, py + 105))
+
+        keys = list(UPGRADE_CONFIG.keys())
+        for i, key in enumerate(keys):
+            cfg = UPGRADE_CONFIG[key]
+            lv = self.saved['upgrades'].get(key, 0)
+            y = py + 125 + i * 62
+
+            # 名称和等级
+            name_txt = font_med.render(f"{cfg['name']}  Lv.{lv}/{cfg['max_lv']}", True, C['text'])
+            surface.blit(name_txt, (px + 30, y))
+            val_per_lv = cfg['per_lv']
+            is_pct = key in ('atk_speed','move_speed','armor')
+            if is_pct:
+                total_bonus = lv * val_per_lv
+                next_bonus = val_per_lv
+                val_t = font_small.render(f"当前加成: +{total_bonus:.0%}  下一级: +{next_bonus:.0%}", True, C['text_dim'])
+            else:
+                total_bonus = lv * val_per_lv
+                next_bonus = val_per_lv
+                val_t = font_small.render(f"当前加成: +{total_bonus:.0f}  下一级: +{next_bonus:.0f}", True, C['text_dim'])
+            surface.blit(val_t, (px + 30, y + 28))
+
+            if lv < cfg['max_lv']:
+                cost = upgrade_cost(key, lv)
+                can_buy = self.saved['gold'] >= cost
+                btn = pygame.Rect(px + pw - 150, y + 2, 120, 36)
+                btn_color = (60, 90, 50) if can_buy else (40, 30, 45)
+                pygame.draw.rect(surface, btn_color, btn, border_radius=5)
+                pygame.draw.rect(surface, C['gold'] if can_buy else (60,50,70), btn, 2, border_radius=5)
+                cost_txt = font_small.render(f"💰{cost}", True, C['gold'] if can_buy else (100,90,110))
+                surface.blit(cost_txt, (btn.centerx - cost_txt.get_width()//2, btn.centery - cost_txt.get_height()//2))
+            else:
+                max_txt = font_small.render("已满级 ★", True, C['gold'])
+                surface.blit(max_txt, (px + pw - max_txt.get_width() - 30, y + 10))
+
+        surface.blit(font_small.render("ESC 关闭", True, (70,60,90)), (px + 30, py + ph - 30))
+
+
+# ──────────────────────────────────────
+#  难度选择界面
+# ──────────────────────────────────────
+class DifficultyScreen:
+    def __init__(self):
+        self.active = False
+        self.selected = 1  # 默认普通
+        self.timer = 0
+
+    def show(self):
+        self.active = True
+        self.selected = 1
+        self.timer = 0
+
+    def handle_event(self, event):
+        if not self.active: return None
+        if event.type == pygame.KEYDOWN:
+            if event.key in (pygame.K_UP, pygame.K_w):
+                self.selected = (self.selected - 1) % len(list(DIFFICULTIES.keys()))
+            elif event.key in (pygame.K_DOWN, pygame.K_s):
+                self.selected = (self.selected + 1) % len(list(DIFFICULTIES.keys()))
+            elif event.key in (pygame.K_RETURN, pygame.K_SPACE):
+                diff_key = list(DIFFICULTIES.keys())[self.selected]
+                global _current_diff
+                _current_diff = diff_key
+                self.active = False
+                return 'start'
+            elif event.key == pygame.K_ESCAPE:
+                self.active = False
+                return 'back'
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            keys = list(DIFFICULTIES.keys())
+            for i, dk in enumerate(keys):
+                r = pygame.Rect(W//2-150, H//2-80 + i*60, 300, 45)
+                if r.collidepoint(event.pos):
+                    self.selected = i
+                    _current_diff = dk
+                    self.active = False
+                    return 'start'
+            if pygame.Rect(W-75, 12, 60, 30).collidepoint(event.pos):
+                self.active = False
+                return 'back'
+        return None
+
+    def update(self):
+        if self.active: self.timer += 1
+
+    def draw(self, surface):
+        if not self.active: return
+        overlay = pygame.Surface((W, H), pygame.SRCALPHA)
+        overlay.fill((5, 2, 15, 240))
+        surface.blit(overlay, (0, 0))
+
+        title = font_large.render("🎯 选择难度", True, C['gold'])
+        surface.blit(title, (W//2 - title.get_width()//2, H//2 - 180))
+        sub = font_small.render("难度影响怪物强度和金币收益", True, C['text_dim'])
+        surface.blit(sub, (W//2 - sub.get_width()//2, H//2 - 125))
+
+        keys = list(DIFFICULTIES.keys())
+        for i, dk in enumerate(keys):
+            d = DIFFICULTIES[dk]
+            r = pygame.Rect(W//2-150, H//2-80 + i*60, 300, 45)
+            sel = i == self.selected
+            bg3 = (50, 35, 70, 200) if sel else (25, 18, 40, 180)
+            pygame.draw.rect(surface, bg3, r, border_radius=6)
+            if sel:
+                pygame.draw.rect(surface, C['gold'], r, 2, border_radius=6)
+                arrow = font_med.render("▶", True, C['gold'])
+                surface.blit(arrow, (r.x-30, r.y+8))
+            else:
+                pygame.draw.rect(surface, (50,35,70), r, 1, border_radius=6)
+            name_txt = font_med.render(dk, True, C['gold'] if sel else C['text'])
+            surface.blit(name_txt, (r.x + 15, r.y + 8))
+            desc_txt = font_small.render(d['desc'], True, C['text_dim'])
+            surface.blit(desc_txt, (r.x + 15, r.y + 28))
+            if sel:
+                sel_txt = font_small.render("◀ 当前", True, C['gold'])
+                surface.blit(sel_txt, (r.right - sel_txt.get_width() - 8, r.y + 10))
+
+        hint = font_small.render("↑↓ 选择 · Enter 确认 · ESC 返回", True, (70, 60, 90))
+        surface.blit(hint, (W//2 - hint.get_width()//2, H - 40))
+
+
+# ──────────────────────────────────────
 #  主菜单
 # ──────────────────────────────────────
 class MainMenu:
@@ -1516,8 +1833,9 @@ class MainMenu:
         self.active = True
         self.selected = 0  # 0=开始, 1=退出
         self.options = [
-            {"text": "开始游戏", "action": "start"},
+            {"text": "开始游戏", "action": "difficulty"},
             {"text": "图鉴系统", "action": "bestiary"},
+            {"text": "🏪 商店", "action": "shop"},
             {"text": "退出游戏", "action": "quit"},
         ]
         self.floating_hearts = []
@@ -1545,11 +1863,12 @@ class MainMenu:
                 self.selected = (self.selected + 1) % len(self.options)
             elif event.key in (pygame.K_RETURN, pygame.K_SPACE):
                 action = self.options[self.selected]['action']
-                if action == 'start':
-                    self.active = False
-                    return 'start'
+                if action == 'difficulty':
+                    return 'difficulty'
                 elif action == 'bestiary':
                     return 'bestiary'
+                elif action == 'shop':
+                    return 'shop'
                 elif action == 'quit':
                     return 'quit'
         if event.type == pygame.MOUSEMOTION:
@@ -1561,8 +1880,9 @@ class MainMenu:
             bx, by = W // 2 - 120, H // 2 + 40
             for i, opt in enumerate(self.options):
                 if pygame.Rect(bx, by + i * 70, 240, 50).collidepoint(event.pos):
-                    if opt['action'] == 'start': self.active = False; return 'start'
+                    if opt['action'] == 'difficulty': return 'difficulty'
                     elif opt['action'] == 'bestiary': return 'bestiary'
+                    elif opt['action'] == 'shop': return 'shop'
                     elif opt['action'] == 'quit': return 'quit'
         return None
 
@@ -1935,22 +2255,32 @@ class Game:
         self.bestiary = Bestiary()
         self.cheat_menu = CheatMenu()
         self.victory_screen = VictoryScreen()
+        self.difficulty_screen = DifficultyScreen()
+        self.shop_screen = ShopScreen()
+        self.gold = 0
         self._last_vx = 0
         self._last_vy = 0
         self.wave_announce = 0
         self.wave_announce_text = ""
 
+    def _save_gold(self):
+        d = load_save()
+        d['gold'] = self.gold
+        if self.wave_mgr and self.wave_mgr.wave > d.get('high_wave', 0):
+            d['high_wave'] = self.wave_mgr.wave
+        save_save(d)
+
     def reset(self):
         self._last_vx = 0
         self._last_vy = 0
         self.state = 'playing'
-        # 魔法棒鼠标，始终隐藏系统光标
-# pygame.mouse.set_visible(False)
-        self.player = Player()
+        self.gold = load_save().get('gold', 0)
+        self.player = Player(_current_diff)
         self.enemies = []
         self.bullets = []
         self.enemy_bullets = []
         self.xp_orbs = []
+        self.particles = []
         self.particles = []
         self.dmg_texts = []
         self.wave_mgr = WaveManager()
@@ -1980,19 +2310,19 @@ class Game:
             oy = y + random.uniform(-15, 15)
             self.xp_orbs.append(XPOrb(ox, oy, v))
 
-    def find_nearest_enemy(self, x, y, max_dist):
+    def find_nearest_enemy(self, x, y, max_dist, exclude_ids=None):
+        exclude_ids = exclude_ids or set()
         nearest = None
         nd = max_dist
         for e in self.enemies:
-            if e.dead:
+            if e.dead or id(e) in exclude_ids:
                 continue
             d = dist((x, y), (e.x, e.y))
             if d < nd:
                 nd = d
                 nearest = e
-        # 也搜索Boss
         boss = self.wave_mgr.boss if self.wave_mgr else None
-        if boss and not boss.dead:
+        if boss and not boss.dead and id(boss) not in exclude_ids:
             d = dist((x, y), (boss.x, boss.y))
             if d < nd:
                 nd = d
@@ -2028,6 +2358,16 @@ class Game:
         # ── 图鉴 ──
         if self.bestiary.active:
             self.bestiary.update()
+            return
+
+        # ── 商店 ──
+        if self.shop_screen.active:
+            self.shop_screen.update()
+            return
+
+        # ── 难度选择 ──
+        if self.state == 'difficulty':
+            self.difficulty_screen.update()
             return
 
         # ── 胜利画面 ──
@@ -2079,6 +2419,12 @@ class Game:
 
         # 波次管理
         self.wave_mgr.update(self.enemies, self.player)
+
+        # ── 金币奖励（波次完成时）──
+        if self.wave_mgr.between_waves and self.wave_mgr.wave_timer == self.wave_mgr.wave_delay - 1 and self.wave_mgr.wave > 0:
+            gold_reward = int(5 + self.wave_mgr.wave * 2 * DIFFICULTIES[_current_diff]['gold_mul'])
+            self.gold += gold_reward
+            self.dmg_texts.append(DamageText(self.player.x, self.player.y - 30, gold_reward, C['gold']))
 
         # ── 检测通关 ──
         if self.wave_mgr.game_complete:
@@ -2135,12 +2481,11 @@ class Game:
                         heal = dmg * self.player.lifesteal
                         self.player.hp = min(self.player.max_hp, self.player.hp + heal)
 
-                    # 穿透
+                    # 穿透（修复：排除已击中的敌人）
                     if b.pierce_left > 0:
                         b.pierce_left -= 1
-                        # 找下一个目标
-                        b.target = self.find_nearest_enemy(b.x, b.y, 300)
-                        if not b.target:
+                        b.target = self.find_nearest_enemy(b.x, b.y, 300, exclude_ids=b.hit)
+                        if not b.target or b.target.dead:
                             b.life = 0
                     else:
                         b.life = 0
@@ -2171,10 +2516,34 @@ class Game:
                     self.add_particles(self.player.x, self.player.y, (255, 80, 80), 8)
                     self.shake(4, 8)
 
+        # ── 远程敌人射击更新（不覆盖移动）──
+        for e in self.enemies:
+            if not e.dead and hasattr(e, 'shoot_timer'):
+                d = dist((e.x, e.y), (self.player.x, self.player.y))
+                if e.shoot_timer > 0:
+                    e.shoot_timer -= 1
+                elif d < 600:
+                    self.enemy_bullets.append(EnemyBullet(e.x, e.y, self.player.x, self.player.y, e.dmg, 4, 6))
+                    e.shoot_timer = max(30, 90 - int(e.xp_value))
+
+        # ── 敌人子弹碰撞 ──
+        for eb in self.enemy_bullets[:]:
+            eb.update()
+            if eb.dead:
+                self.enemy_bullets.remove(eb)
+                continue
+            d = dist((eb.x, eb.y), (self.player.x, self.player.y))
+            if d < eb.radius + self.player.radius:
+                actual = self.player.take_damage(eb.dmg)
+                if actual > 0:
+                    self.dmg_texts.append(DamageText(self.player.x, self.player.y - 20, actual, (255, 100, 100)))
+                    self.add_particles(self.player.x, self.player.y, (255, 50, 50), 6)
+                self.enemy_bullets.remove(eb)
+
         # ── Boss 更新 ──
         boss = self.wave_mgr.boss
         if boss and not boss.dead:
-            boss.update(self.player.x, self.player.y)
+            boss.update(self.player.x, self.player.y, self.enemy_bullets, self.enemies)
 
             # Boss 碰撞伤害
             d = dist((boss.x, boss.y), (self.player.x, self.player.y))
@@ -2249,9 +2618,8 @@ class Game:
 
         # ── 检查死亡 ──
         if self.player.hp <= 0:
+            self._save_gold()
             self.state = 'game_over'
-            # 魔法棒鼠标，始终隐藏系统光标
-# pygame.mouse.set_visible(True)
             self.add_particles(self.player.x, self.player.y, C['player'], 30, 6)
             self.game_over.show(self.player, self.wave_mgr.wave)
 
@@ -2262,6 +2630,20 @@ class Game:
         # ── 图鉴 ──
         if self.bestiary.active:
             self.bestiary.draw(screen)
+            draw_magic_wand(screen)
+            pygame.display.flip()
+            return
+
+        # ── 商店 ──
+        if self.shop_screen.active:
+            self.shop_screen.draw(screen)
+            draw_magic_wand(screen)
+            pygame.display.flip()
+            return
+
+        # ── 难度选择 ──
+        if self.state == 'difficulty':
+            self.difficulty_screen.draw(screen)
             draw_magic_wand(screen)
             pygame.display.flip()
             return
@@ -2319,6 +2701,8 @@ class Game:
             boss.draw(screen, self.camera)
         for b in self.bullets:
             b.draw(screen, self.camera)
+        for eb in self.enemy_bullets:
+            eb.draw(screen, self.camera)
         for p in self.particles:
             p.draw(screen, self.camera)
         for dt in self.dmg_texts:
@@ -2326,7 +2710,7 @@ class Game:
         self.player.draw(screen, self.camera)
 
         # UI（不受震屏影响）
-        draw_ui(screen, self.player, self.wave_mgr, self.xp_orbs, self._last_vx, self._last_vy)
+        draw_ui(screen, self.player, self.wave_mgr, self.xp_orbs, self.gold, self._last_vx, self._last_vy)
 
         # 天赋面板
         if self.talent_panel.active:
@@ -2352,6 +2736,21 @@ class Game:
             self.bestiary.handle_event(event)
             return
 
+        # ── 商店事件 ──
+        if self.shop_screen.active:
+            self.shop_screen.handle_event(event)
+            return
+
+        # ── 难度选择事件 ──
+        if self.state == 'difficulty':
+            result = self.difficulty_screen.handle_event(event)
+            if result == 'start':
+                self.reset()
+            elif result == 'back':
+                self.state = 'menu'
+                self.main_menu.active = True
+            return
+
         # ── 胜利画面事件 ──
         if self.victory_screen.active:
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
@@ -2371,8 +2770,11 @@ class Game:
                 self.running = False
             elif result == 'bestiary':
                 self.bestiary.active = True
-            elif result == 'start':
-                self.reset()
+            elif result == 'difficulty':
+                self.state = 'difficulty'
+                self.difficulty_screen.show()
+            elif result == 'shop':
+                self.shop_screen.open()
             return
 
         # ── 作弊菜单（游戏中） ──
@@ -2383,6 +2785,7 @@ class Game:
         # ── 游戏中按键处理（仅处理单次按键，移动用 get_pressed）──
         if self.state == 'playing' and self.player:
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                self._save_gold()
                 self.state = 'menu'
                 self.main_menu.active = True
                 self.player.move_x = 0
@@ -2393,6 +2796,7 @@ class Game:
         if self.state == 'game_over':
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
+                    self._save_gold()
                     self.state = 'menu'
                     self.main_menu.active = True
                     # 魔法棒鼠标，始终隐藏系统光标
