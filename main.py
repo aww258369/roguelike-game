@@ -1076,6 +1076,13 @@ class TalentPanel:
         self.options = []
         self.hovered = -1
         self.fade_in = 0
+        self.pw, self.ph = 520, 280
+        self.px, self.py = W//2 - self.pw//2, H//2 - self.ph//2
+        self.item_w = (self.pw - 48) // 3
+        self.item_h = 200
+        self.fnt = pygame.font.Font(_zh_font_path, 20) if _zh_font_path else pygame.font.SysFont('microsoftyahei,tahoma', 20)
+        self.fnt_t = pygame.font.Font(_zh_font_path, 18) if _zh_font_path else pygame.font.SysFont('microsoftyahei,tahoma', 18)
+        self.fnt_s = pygame.font.Font(_zh_font_path, 16) if _zh_font_path else pygame.font.SysFont('microsoftyahei,tahoma', 16)
 
     def show(self, player):
         self.active = True
@@ -1084,42 +1091,28 @@ class TalentPanel:
         self.hovered = -1
 
     def _pick_options(self, player):
-        """挑选3个天赋"""
         taken_ids = [t[0] for t in player.talents_taken]
         available = []
-
         for t in TALENTS:
             tid, name, desc, tier, fn, max_stack = t
             count = taken_ids.count(tid)
             if count < max_stack:
-                # 根据等级解锁稀有度
-                if tier == 1:
-                    available.append(t)
-                elif tier == 2 and player.level >= 2:
-                    available.append(t)
-                elif tier == 3 and player.level >= 5:
-                    available.append(t)
-                elif tier == 4 and player.level >= 10:
-                    available.append(t)
-
-        if len(available) <= 3:
-            return available
-
-        # 按权重随机选，优先选没拿过的
+                if tier == 1: available.append(t)
+                elif tier == 2 and player.level >= 2: available.append(t)
+                elif tier == 3 and player.level >= 5: available.append(t)
+                elif tier == 4 and player.level >= 10: available.append(t)
+        if len(available) <= 3: return available
         weights = []
         for t in available:
             tid = t[0]
             count = taken_ids.count(tid)
             w = talent_weight(t[3])
-            if count == 0:
-                w *= 2  # 新天赋权重翻倍
+            if count == 0: w *= 2
             weights.append(w)
-
         chosen = []
         pool = list(range(len(available)))
         for _ in range(3):
-            if not pool:
-                break
+            if not pool: break
             total = sum(weights[i] for i in pool)
             r = random.random() * total
             acc = 0
@@ -1132,113 +1125,102 @@ class TalentPanel:
         return chosen
 
     def handle_click(self, pos, player):
-        if not self.active:
-            return False
-        self.hovered = -1
-        bx, by = W//2 - 300, H//2 + 50
-        gap = 220
+        if not self.active: return False
+        px, py = self.px, self.py
+        gap = self.item_w + 16
         for i in range(len(self.options)):
-            rx, ry = bx + i*gap, by
-            rect = pygame.Rect(rx, ry, 190, 260)
-            if rect.collidepoint(pos):
+            rx = px + 20 + i * gap
+            ry = py + 65
+            if pygame.Rect(rx, ry, self.item_w, self.item_h - 10).collidepoint(pos):
                 self._apply_talent(i, player)
                 self.active = False
                 return True
         return False
 
     def _apply_talent(self, idx, player):
-        if idx >= len(self.options):
-            return
+        if idx >= len(self.options): return
         tid, name, desc, tier, fn, max_stack = self.options[idx]
         fn(player)
         player.talents_taken.append(self.options[idx])
 
     def update(self):
         if self.active:
-            self.fade_in = min(self.fade_in + 12, 255)
+            self.fade_in = min(self.fade_in + 15, 255)
             mx, my = pygame.mouse.get_pos()
             self.hovered = -1
-            bx, by = W//2 - 300, H//2 + 50
-            gap = 220
+            px, py = self.px, self.py
+            gap = self.item_w + 16
             for i in range(len(self.options)):
-                rx, ry = bx + i*gap, by
-                rect = pygame.Rect(rx, ry, 190, 260)
-                if rect.collidepoint(mx, my):
+                rx = px + 20 + i * gap
+                ry = py + 65
+                if pygame.Rect(rx, ry, self.item_w, self.item_h - 10).collidepoint(mx, my):
                     self.hovered = i
                     break
 
     def draw(self, surface):
-        if not self.active:
-            return
+        if not self.active: return
         a = self.fade_in
-
-        # 遮罩
         overlay = pygame.Surface((W, H), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, min(180, a)))
         surface.blit(overlay, (0, 0))
 
-        # 标题
-        title = font_large.render("🆙 升级！选择天赋", True, C['gold'])
+        px, py = self.px, self.py
+        panel = pygame.Surface((self.pw, self.ph), pygame.SRCALPHA)
+        panel.fill((8, 4, 18, 240))
+        pygame.draw.rect(panel, (80, 60, 120, 200), panel.get_rect(), 2, 8)
+        panel.set_alpha(a)
+        surface.blit(panel, (px, py))
+
+        title = self.fnt.render("🆙 升级！选择天赋", True, C['gold'])
         title.set_alpha(a)
-        surface.blit(title, (W//2 - title.get_width()//2, H//2 - 160))
+        surface.blit(title, (px + self.pw//2 - title.get_width()//2, py + 12))
 
-        sub = font_small.render(f"等级 {pygame.font.Font(None, 28)} — 选一个天赋变强", True, C['text_dim'])
-        sub_t = font_small.render("点击选择天赋", True, C['text_dim'])
-        sub_t.set_alpha(a)
-        surface.blit(sub_t, (W//2 - sub_t.get_width()//2, H//2 - 110))
-
-        # 天赋卡片
-        bx, by = W//2 - 300, H//2 + 20
-        gap = 220
-        tier_colors = {1: (100, 150, 255), 2: (140, 80, 255), 3: (255, 150, 50), 4: (255, 215, 0)}
-        tier_names = {1: '普通', 2: '稀有', 3: '史诗', 4: '传说'}
+        tier_colors_t = {1: (100, 150, 255), 2: (140, 80, 255), 3: (255, 150, 50), 4: (255, 215, 0)}
+        tier_names_t = {1: '普通', 2: '稀有', 3: '史诗', 4: '传说'}
+        gap = self.item_w + 16
 
         for i, t in enumerate(self.options):
             tid, name, desc, tier, fn, max_stack = t
-            rx, ry = bx + i*gap, by
-
-            # 卡片背景
+            rx = px + 20 + i * gap
+            ry = py + 65
+            tc = tier_colors_t.get(tier, (200,200,200))
             is_hover = i == self.hovered
-            bg_color = C['talent_hov'] if is_hover else C['talent_bg']
-            bdr_color = C['talent_bdr'] if not is_hover else tier_colors.get(tier, C['gold'])
 
-            card = pygame.Surface((190, 260), pygame.SRCALPHA)
-            card.fill((*bg_color, a))
-            pygame.draw.rect(card, (*bdr_color, a), card.get_rect(), 2)
-
+            card = pygame.Surface((self.item_w, self.item_h - 10), pygame.SRCALPHA)
+            card.fill((30, 20, 48, 200) if is_hover else (22, 14, 38, 200))
+            pygame.draw.rect(card, (*tc, 80) if is_hover else (*tc, 40), card.get_rect(), 2, 8)
+            if is_hover:
+                pygame.draw.rect(card, (*C['gold'][:3], 120), card.get_rect(), 2, 8)
+            card.set_alpha(a)
             surface.blit(card, (rx, ry))
 
-            # 稀有度标记
-            tc = tier_colors.get(tier, (200, 200, 200))
-            tier_txt = font_small.render(tier_names.get(tier, ''), True, tc)
-            tier_txt.set_alpha(a)
-            surface.blit(tier_txt, (rx + 95 - tier_txt.get_width()//2, ry + 8))
+            pygame.draw.rect(surface, (*tc, a), (rx + 4, ry + 4, self.item_w - 8, 3))
 
-            # 天赋图标 (简单的形状)
-            icon_y = ry + 40
-            pygame.draw.circle(surface, tc, (rx + 95, icon_y + 25), 22)
-            pygame.draw.circle(surface, (255,255,255, min(200, a)), (rx + 95, icon_y + 25), 18)
-            icon_txt = font_med.render(tid[:2].upper(), True, tc)
-            icon_txt.set_alpha(a)
-            surface.blit(icon_txt, (rx + 95 - icon_txt.get_width()//2, icon_y + 16))
+            cx, cy = rx + self.item_w//2, ry + 28
+            pygame.draw.circle(surface, (*tc, a), (cx, cy), 22)
+            pygame.draw.circle(surface, (255,255,255,min(200,a)), (cx, cy), 18)
+            ic = self.fnt.render(tid[:2].upper(), True, tc)
+            ic.set_alpha(a)
+            surface.blit(ic, (cx - ic.get_width()//2, cy - ic.get_height()//2))
 
-            # 名字
-            name_txt = font_med.render(name, True, (255,255,255))
-            name_txt.set_alpha(a)
-            surface.blit(name_txt, (rx + 95 - name_txt.get_width()//2, icon_y + 60))
+            nm = self.fnt.render(name, True, (240,240,255))
+            nm.set_alpha(a)
+            surface.blit(nm, (rx + self.item_w//2 - nm.get_width()//2, ry + 58))
 
-            # 描述
-            desc_lines = [desc[j:j+10] for j in range(0, len(desc), 10)]
-            for k, line in enumerate(desc_lines):
-                d = font_small.render(line, True, C['text_dim'])
-                d.set_alpha(a)
-                surface.blit(d, (rx + 12, icon_y + 95 + k*22))
+            dl = [desc[j:j+8] for j in range(0, len(desc), 8)]
+            for k, line in enumerate(dl[:2]):
+                ds = self.fnt_s.render(line, True, (160, 160, 180))
+                ds.set_alpha(a)
+                surface.blit(ds, (rx + 8, ry + 88 + k*20))
 
-            # 堆叠数
-            if max_stack > 1:
-                stack_txt = font_small.render(f"可堆叠 {max_stack} 次", True, (150,150,150))
-                stack_txt.set_alpha(a)
-                surface.blit(stack_txt, (rx + 95 - stack_txt.get_width()//2, ry + 230))
+            tn = self.fnt_t.render(tier_names_t.get(tier, ''), True, tc)
+            tn.set_alpha(a)
+            surface.blit(tn, (rx + self.item_w//2 - tn.get_width()//2, ry + 135))
+
+            if is_hover:
+                click_hint = self.fnt_s.render("点击选择", True, C['gold'])
+                click_hint.set_alpha(a)
+                surface.blit(click_hint, (rx + self.item_w//2 - click_hint.get_width()//2, ry + 160))
 
 # ──────────────────────────────────────
 #  游戏结束界面
@@ -2130,6 +2112,18 @@ class CheatMenu:
         pygame.draw.rect(s, (*cg[:3], 80), s.get_rect(), 1, 3)
         surface.blit(s, (self.btn_rect.x, self.btn_rect.y))
         surface.blit(font_small.render("⚙", True, cg), (self.btn_rect.x + 3, self.btn_rect.y - 2))
+        # 齿轮提示文字 — 鼠标悬停时显示
+        if not self.open:
+            mx, my = pygame.mouse.get_pos()
+            if self.btn_rect.collidepoint(mx, my):
+                tip = font_small.render("作弊菜单 (F1)", True, (255, 215, 0))
+                tip_w = tip.get_width() + 12
+                tip_s = pygame.Surface((tip_w, 26), pygame.SRCALPHA)
+                tip_s.fill((15, 8, 30, 230))
+                pygame.draw.rect(tip_s, (80, 60, 120, 150), tip_s.get_rect(), 1, 4)
+                surface.blit(tip_s, (self.btn_rect.right + 6, self.btn_rect.y))
+                surface.blit(tip, (self.btn_rect.right + 12, self.btn_rect.y + 3))
+
         if not self.open:
             return
 
