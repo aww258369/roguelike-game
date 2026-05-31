@@ -117,11 +117,11 @@ DIFFICULTIES = {
 _current_diff = '普通'
 
 UPGRADE_CONFIG = {
-    'max_hp':    {'name': '生命上限',  'cost_base': 100, 'cost_step': 1.5, 'max_lv': 20, 'per_lv': 25},
-    'dmg':       {'name': '攻击力',    'cost_base': 80,  'cost_step': 1.6, 'max_lv': 20, 'per_lv': 3},
-    'atk_speed': {'name': '攻速',      'cost_base': 120, 'cost_step': 1.5, 'max_lv': 15, 'per_lv': -1.5},
-    'move_speed':{'name': '移速',      'cost_base': 60,  'cost_step': 1.4, 'max_lv': 10, 'per_lv': 0.3},
-    'armor':     {'name': '护甲',      'cost_base': 150, 'cost_step': 1.6, 'max_lv': 15, 'per_lv': 0.15},
+    'max_hp':    {'name': '生命上限', 'cost_base': 100, 'cost_step': 1.5, 'max_lv': 20, 'per_lv': 25,  'unit': ''},
+    'dmg':       {'name': '攻击力',   'cost_base': 80,  'cost_step': 1.6, 'max_lv': 20, 'per_lv': 3,   'unit': ''},
+    'atk_speed': {'name': '攻速',     'cost_base': 120, 'cost_step': 1.5, 'max_lv': 15, 'per_lv': -1.5, 'unit': '帧'},
+    'move_speed':{'name': '移速',     'cost_base': 60,  'cost_step': 1.4, 'max_lv': 10, 'per_lv': 0.5, 'unit': ''},
+    'armor':     {'name': '护甲',     'cost_base': 150, 'cost_step': 1.6, 'max_lv': 15, 'per_lv': 0.2, 'unit': ''},
 }
 
 def upgrade_cost(key, level):
@@ -294,10 +294,16 @@ class Player:
         self.inv_timer = 0
 
     def _apply_upgrades(self):
-        """从存档应用升级到属性"""
+        """从存档应用升级到属性（正确叠加到基础值）"""
         try:
             d = load_save()
             ups = d.get('upgrades', {})
+            # 从基础值开始叠加
+            self.max_hp = 100
+            self.dmg = self.base_dmg
+            self.atk_speed = self.base_atk_speed
+            self.move_speed = 4.0
+            self.armor = 1.0
             for key, lv in ups.items():
                 if key in UPGRADE_CONFIG and lv > 0:
                     cfg = UPGRADE_CONFIG[key]
@@ -1076,7 +1082,7 @@ class TalentPanel:
         self.options = []
         self.hovered = -1
         self.fade_in = 0
-        self.pw, self.ph = 520, 280
+        self.pw, self.ph = 520, 310
         self.px, self.py = W//2 - self.pw//2, H//2 - self.ph//2
         self.item_w = (self.pw - 48) // 3
         self.item_h = 200
@@ -1084,11 +1090,13 @@ class TalentPanel:
         self.fnt_t = pygame.font.Font(_zh_font_path, 18) if _zh_font_path else pygame.font.SysFont('microsoftyahei,tahoma', 18)
         self.fnt_s = pygame.font.Font(_zh_font_path, 16) if _zh_font_path else pygame.font.SysFont('microsoftyahei,tahoma', 16)
 
-    def show(self, player):
+    def show(self, player, game=None):
         self.active = True
         self.fade_in = 0
+        self.game_ref = game
         self.options = self._pick_options(player)
         self.hovered = -1
+        self.refresh_cost = 30
 
     def _pick_options(self, player):
         taken_ids = [t[0] for t in player.talents_taken]
@@ -1127,6 +1135,18 @@ class TalentPanel:
     def handle_click(self, pos, player):
         if not self.active: return False
         px, py = self.px, self.py
+
+        # 金币刷新按钮
+        refresh_rect = pygame.Rect(px + 12, py + self.ph - 36, 110, 28)
+        if refresh_rect.collidepoint(pos):
+            game = self.game_ref
+            if game and game.gold >= self.refresh_cost:
+                game.gold -= self.refresh_cost
+                self.options = self._pick_options(player)
+                self.hovered = -1
+                return True
+            return False
+
         gap = self.item_w + 16
         for i in range(len(self.options)):
             rx = px + 20 + i * gap
@@ -1221,6 +1241,20 @@ class TalentPanel:
                 click_hint = self.fnt_s.render("点击选择", True, C['gold'])
                 click_hint.set_alpha(a)
                 surface.blit(click_hint, (rx + self.item_w//2 - click_hint.get_width()//2, ry + 160))
+
+        # 金币刷新按钮
+        game = self.game_ref
+        if game:
+            can_refresh = game.gold >= self.refresh_cost
+            refresh_rect = pygame.Rect(px + 12, py + self.ph - 36, 130, 28)
+            bg_r = pygame.Surface((130, 28), pygame.SRCALPHA)
+            bg_r.fill((40, 70, 40, 200) if can_refresh else (30, 20, 35, 200))
+            pygame.draw.rect(bg_r, C['gold'] if can_refresh else (50, 40, 60), bg_r.get_rect(), 1, 5)
+            bg_r.set_alpha(a)
+            surface.blit(bg_r, (px + 12, py + self.ph - 36))
+            rt = self.fnt_s.render(f"🔄 刷新 ${self.refresh_cost}", True, C['gold'] if can_refresh else (100, 90, 110))
+            rt.set_alpha(a)
+            surface.blit(rt, (px + 16, py + self.ph - 33))
 
 # ──────────────────────────────────────
 #  游戏结束界面
@@ -1700,10 +1734,11 @@ class ShopScreen:
             surface.blit(bg, (px + 12, y))
 
             surface.blit(self.fnt.render(f"{cfg['name']}  Lv.{lv}/{cfg['max_lv']}", True, C['text']), (px + 22, y + 5))
-            pct = key in ('atk_speed','move_speed','armor')
+            unit = cfg.get('unit', '')
             bonus = lv * cfg['per_lv']
             nxt = cfg['per_lv']
-            val_t = self.fnt.render(f"当前: +{bonus:.0f}{'%' if pct else ''}  下一级: +{nxt:.0f}{'%' if pct else ''}", True, C['text_dim'])
+            fmt = ".1f" if abs(cfg['per_lv']) < 1 else ".0f"
+            val_t = self.fnt.render(f"当前: +{bonus:{fmt}}{unit}  下一级: +{nxt:{fmt}}{unit}", True, C['text_dim'])
             surface.blit(val_t, (px + 22, y + 28))
 
             if lv < cfg['max_lv']:
@@ -2425,7 +2460,7 @@ class Game:
             self.bullets.append(b)
 
     def process_talent_selection(self):
-        self.talent_panel.show(self.player)
+        self.talent_panel.show(self.player, self)
         self.paused = True
 
     def update(self):
