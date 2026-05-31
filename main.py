@@ -20,34 +20,41 @@ from enum import Enum
 # ──────────────────────────────────────
 pygame.init()
 pygame.display.set_caption("轮回之战 — Roguelike 生存")
+try: pygame.key.stop_text_input()
+except: pass
 pygame.key.set_repeat(100, 50)
 screen = pygame.display.set_mode((1280, 720))
 W, H = screen.get_size()
 clock = pygame.time.Clock()
 
-# 字体 — 加载 Windows 系统字体支持中文
+# 字体 — 用 SysFont 加载系统字体，安全支持中文
 _zh_font_path = None
 for _try_font in [
-    'C:/Windows/Fonts/msyh.ttc',  # 微软雅黑
-    'C:/Windows/Fonts/simhei.ttf', # 黑体
+    'C:/Windows/Fonts/msyh.ttc',
+    'C:/Windows/Fonts/simhei.ttf',
     'C:/Windows/Fonts/msyh.ttf',
-    'C:/Windows/Fonts/simsun.ttc', # 宋体
-    'C:/Windows/Fonts/SIMLI.TTF',  # 隶书
+    'C:/Windows/Fonts/simsun.ttc',
+    'C:/Windows/Fonts/SIMLI.TTF',
 ]:
     if os.path.exists(_try_font):
         _zh_font_path = _try_font
         break
 
 if _zh_font_path:
-    font_small = pygame.font.Font(_zh_font_path, 28)
-    font_med  = pygame.font.Font(_zh_font_path, 42)
-    font_large = pygame.font.Font(_zh_font_path, 72)
-    font_huge  = pygame.font.Font(_zh_font_path, 100)
-else:
-    font_small = pygame.font.Font(None, 28)
-    font_med  = pygame.font.Font(None, 42)
-    font_large = pygame.font.Font(None, 72)
-    font_huge  = pygame.font.Font(None, 100)
+    try:
+        font_small = pygame.font.Font(_zh_font_path, 28)
+        font_med  = pygame.font.Font(_zh_font_path, 42)
+        font_large = pygame.font.Font(_zh_font_path, 72)
+        font_huge  = pygame.font.Font(_zh_font_path, 100)
+    except:
+        _zh_font_path = None
+
+if not _zh_font_path:
+    # SysFont 比 Font(None) 更可靠地支持中文
+    font_small = pygame.font.SysFont('microsoftyahei,simhei,msyh,simsun,tahoma', 28)
+    font_med  = pygame.font.SysFont('microsoftyahei,simhei,msyh,simsun,tahoma', 42)
+    font_large = pygame.font.SysFont('microsoftyahei,simhei,msyh,simsun,tahoma', 72)
+    font_huge  = pygame.font.SysFont('microsoftyahei,simhei,msyh,simsun,tahoma', 100)
 
 CENTER = (W // 2, H // 2)
 
@@ -1695,12 +1702,14 @@ class CheatMenu:
                     if y < py + 76 or y > py + self.panel_h - 20:
                         continue
                     if pygame.Rect(px + 12, y, self.panel_w - 24, self.item_h - 2).collidepoint(pos):
-                        game.wave_mgr.wave = w
+                        # 减1因为 start_next_wave 会 +1
+                        game.wave_mgr.wave = w - 1
                         game.wave_mgr.between_waves = True
                         game.wave_mgr.wave_timer = 30
                         game.wave_mgr.boss_active = False
                         game.wave_mgr.boss = None
                         game.wave_mgr.spawn_count = 0
+                        game.wave_mgr.enemies_left = 0
                         if hasattr(game, 'enemies'): game.enemies.clear()
                         self.open = False
                         return True
