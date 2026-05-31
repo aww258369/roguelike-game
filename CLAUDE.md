@@ -32,7 +32,11 @@ if ($tags.Count -gt 10) {
 4. 打标签并推送
 
 ### 🔑 代理
-推送时需要通过 SakuraCat 代理: `http://127.0.0.1:7897`
+推送时需要通过 SakuraCat 代理:
+```powershell
+git -c http.proxy="http://127.0.0.1:7897" -c https.proxy="http://127.0.0.1:7897" push origin main
+git -c http.proxy="http://127.0.0.1:7897" -c https.proxy="http://127.0.0.1:7897" push origin v<N>
+```
 
 ### 📎 远程仓库
 `https://github.com/aww258369/roguelike-game`

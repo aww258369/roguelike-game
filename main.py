@@ -1589,7 +1589,6 @@ class VictoryScreen:
         overlay.fill((0, 0, 0, 180))
         surface.blit(overlay, (0, 0))
 
-        # 花瓣雨
         for p in self.particles:
             alpha = max(0, int(p['alpha'] * 255))
             if alpha < 1: continue
@@ -1597,45 +1596,51 @@ class VictoryScreen:
             pygame.draw.circle(s, (*p['color'], alpha), (int(p['size']), int(p['size'])), int(p['size']))
             surface.blit(s, (p['x']-p['size'], p['y']-p['size']))
 
-        # 主标题
+        # 面板
+        pw, ph = 420, 380
+        px, py = W//2 - pw//2, H//2 - ph//2
+        panel = pygame.Surface((pw, ph), pygame.SRCALPHA)
+        panel.fill((8, 4, 18, 240))
+        pygame.draw.rect(panel, (80, 60, 120, 200), panel.get_rect(), 2, 8)
+        surface.blit(panel, (px, py))
+
+        fnt_s = pygame.font.Font(_zh_font_path, 22) if _zh_font_path else pygame.font.SysFont('microsoftyahei,tahoma', 22)
+        fnt  = pygame.font.Font(_zh_font_path, 20) if _zh_font_path else pygame.font.SysFont('microsoftyahei,tahoma', 20)
+        fnt_t= pygame.font.Font(_zh_font_path, 18) if _zh_font_path else pygame.font.SysFont('microsoftyahei,tahoma', 18)
+
         if self.timer > 30:
             a = min(255, (self.timer-30)*8)
-            title = font_huge.render("🎉 恭喜通关！", True, C['gold'])
-            title.set_alpha(a)
-            surface.blit(title, (W//2 - title.get_width()//2, H//2 - 170))
+            title = fnt_s.render("🎉 恭喜通关！", True, C['gold']); title.set_alpha(a)
+            surface.blit(title, (px + pw//2 - title.get_width()//2, py + 25))
 
-        # 副标题
         if self.timer > 50:
             a = min(255, (self.timer-50)*8)
-            sub = font_med.render("你成功闯过了全部 100 关！", True, (255, 215, 100))
-            sub.set_alpha(a)
-            surface.blit(sub, (W//2 - sub.get_width()//2, H//2 - 100))
-            sub2 = font_med.render("轮回之巅，当之无愧！", True, C['text_dim'])
-            sub2.set_alpha(a)
-            surface.blit(sub2, (W//2 - sub2.get_width()//2, H//2 - 60))
+            sub = fnt.render("全部 100 关已通关", True, (255, 215, 100)); sub.set_alpha(a)
+            surface.blit(sub, (px + pw//2 - sub.get_width()//2, py + 60))
 
-        # 战绩
         if self.timer > 70 and self.player:
             a = min(255, (self.timer-70)*6)
-            texts = [
-                f"最终等级：{self.player.level}",
-                f"击杀数：{self.player.kills}",
-                f"天赋数：{len(self.player.talents_taken)}",
-                f"总伤害：{self.player.total_dmg_dealt:.0f}",
+            stats = [
+                ("最终等级", f"{self.player.level}"),
+                ("击杀数", f"{self.player.kills}"),
+                ("天赋数", f"{len(self.player.talents_taken)}"),
+                ("总伤害", f"{self.player.total_dmg_dealt:.0f}"),
             ]
-            for i, t in enumerate(texts):
-                txt = font_med.render(t, True, C['text'])
-                txt.set_alpha(a)
-                surface.blit(txt, (W//2 - txt.get_width()//2, H//2 - 15 + i*40))
+            cy = py + 100
+            for i, (label, val) in enumerate(stats):
+                c = cy + i * 42
+                lbl = fnt.render(label, True, C['text_dim']); lbl.set_alpha(a)
+                surface.blit(lbl, (px + 50, c))
+                vt = fnt.render(val, True, C['gold'] if i == 0 else C['text']); vt.set_alpha(a)
+                surface.blit(vt, (px + pw - 80 - vt.get_width(), c))
 
-        # 按钮
         if self.timer > 90:
-            r1 = pygame.Rect(W//2-130, H//2+140, 120, 45)
-            r2 = pygame.Rect(W//2+10, H//2+140, 120, 45)
+            r1 = pygame.Rect(px + 30, py + ph - 60, 140, 36)
+            r2 = pygame.Rect(px + pw - 170, py + ph - 60, 140, 36)
             for r, txt, col in [(r1, '返回菜单', (60,40,80)), (r2, '再来一次', (80,40,60))]:
                 pygame.draw.rect(surface, col, r, border_radius=6)
                 pygame.draw.rect(surface, C['gold'], r, 2, border_radius=6)
-                t = font_med.render(txt, True, C['gold'])
+                t = fnt.render(txt, True, C['gold'])
                 surface.blit(t, (r.centerx - t.get_width()//2, r.centery - t.get_height()//2))
 
 
@@ -1647,6 +1652,10 @@ class ShopScreen:
         self.active = False
         self.saved = load_save()
         self.timer = 0
+        self.pw, self.ph = 560, 460
+        self.px, self.py = W//2 - self.pw//2, H//2 - self.ph//2
+        self.fnt = pygame.font.Font(_zh_font_path, 20) if _zh_font_path else pygame.font.SysFont('microsoftyahei,tahoma', 20)
+        self.fnt_tip = pygame.font.Font(_zh_font_path, 18) if _zh_font_path else pygame.font.SysFont('microsoftyahei,tahoma', 18)
 
     def open(self):
         self.active = True
@@ -1659,17 +1668,16 @@ class ShopScreen:
             if event.key in (pygame.K_ESCAPE, pygame.K_BACKSPACE):
                 self.active = False; return True
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            # 关闭
-            if pygame.Rect(W-70, 12, 55, 30).collidepoint(event.pos):
+            px, py = self.px, self.py
+            if pygame.Rect(px + self.pw - 36, py + 8, 28, 26).collidepoint(event.pos):
                 self.active = False; return True
-            # 升级按钮
             keys = list(UPGRADE_CONFIG.keys())
             for i, key in enumerate(keys):
                 cfg = UPGRADE_CONFIG[key]
                 lv = self.saved['upgrades'].get(key, 0)
                 if lv >= cfg['max_lv']: continue
                 cost = upgrade_cost(key, lv)
-                btn = pygame.Rect(W//2 + 80, 125 + i*62, 120, 36)
+                btn = pygame.Rect(px + self.pw - 140, py + 118 + i*58, 110, 34)
                 if btn.collidepoint(event.pos) and self.saved['gold'] >= cost:
                     self.saved['gold'] -= cost
                     self.saved['upgrades'][key] = lv + 1
@@ -1682,64 +1690,52 @@ class ShopScreen:
 
     def draw(self, surface):
         if not self.active: return
+        px, py = self.px, self.py
         overlay = pygame.Surface((W, H), pygame.SRCALPHA)
         overlay.fill((5, 2, 15, 240))
         surface.blit(overlay, (0, 0))
 
-        # 面板
-        pw, ph = 600, 460
-        px, py = W//2 - pw//2, H//2 - ph//2
-        panel = pygame.Surface((pw, ph), pygame.SRCALPHA)
+        panel = pygame.Surface((self.pw, self.ph), pygame.SRCALPHA)
         panel.fill((8, 4, 18, 240))
         pygame.draw.rect(panel, (80, 60, 120, 200), panel.get_rect(), 2, 8)
         surface.blit(panel, (px, py))
 
-        title = font_large.render("🏪 商店", True, C['gold'])
-        surface.blit(title, (px + pw//2 - title.get_width()//2, py + 15))
-        pygame.draw.rect(surface, (40,30,55), (W-75, 10, 65, 34), border_radius=4)
-        surface.blit(font_small.render("✕ 关闭", True, (150,140,170)), (W-70, 16))
+        surface.blit(self.fnt.render("🏪 商店", True, C['gold']), (px + 14, py + 10))
+        surface.blit(self.fnt.render("✕", True, (180, 140, 160)), (px + self.pw - 30, py + 10))
 
-        # 金币显示
-        gold_txt = font_med.render(f"💰 {self.saved['gold']} 金币", True, C['gold'])
-        surface.blit(gold_txt, (px + 30, py + 70))
-        high_txt = font_small.render(f"最高波次: 第 {self.saved.get('high_wave',0)} 关", True, C['text_dim'])
-        surface.blit(high_txt, (px + 30, py + 105))
+        surface.blit(self.fnt.render(f"💰 {self.saved['gold']} 金币", True, C['gold']), (px + 20, py + 48))
+        surface.blit(self.fnt.render(f"最高波次: 第 {self.saved.get('high_wave',0)} 关", True, C['text_dim']), (px + 20, py + 72))
 
         keys = list(UPGRADE_CONFIG.keys())
         for i, key in enumerate(keys):
             cfg = UPGRADE_CONFIG[key]
             lv = self.saved['upgrades'].get(key, 0)
-            y = py + 125 + i * 62
+            y = py + 118 + i * 58
 
-            # 名称和等级
-            name_txt = font_med.render(f"{cfg['name']}  Lv.{lv}/{cfg['max_lv']}", True, C['text'])
-            surface.blit(name_txt, (px + 30, y))
-            val_per_lv = cfg['per_lv']
-            is_pct = key in ('atk_speed','move_speed','armor')
-            if is_pct:
-                total_bonus = lv * val_per_lv
-                next_bonus = val_per_lv
-                val_t = font_small.render(f"当前加成: +{total_bonus:.0%}  下一级: +{next_bonus:.0%}", True, C['text_dim'])
-            else:
-                total_bonus = lv * val_per_lv
-                next_bonus = val_per_lv
-                val_t = font_small.render(f"当前加成: +{total_bonus:.0f}  下一级: +{next_bonus:.0f}", True, C['text_dim'])
-            surface.blit(val_t, (px + 30, y + 28))
+            bg = pygame.Surface((self.pw - 24, 48), pygame.SRCALPHA)
+            bg.fill((20, 12, 38, 200))
+            pygame.draw.rect(bg, (50, 35, 70, 100), bg.get_rect(), 1, 6)
+            surface.blit(bg, (px + 12, y))
+
+            surface.blit(self.fnt.render(f"{cfg['name']}  Lv.{lv}/{cfg['max_lv']}", True, C['text']), (px + 22, y + 5))
+            pct = key in ('atk_speed','move_speed','armor')
+            bonus = lv * cfg['per_lv']
+            nxt = cfg['per_lv']
+            val_t = self.fnt.render(f"当前: +{bonus:.0f}{'%' if pct else ''}  下一级: +{nxt:.0f}{'%' if pct else ''}", True, C['text_dim'])
+            surface.blit(val_t, (px + 22, y + 28))
 
             if lv < cfg['max_lv']:
                 cost = upgrade_cost(key, lv)
-                can_buy = self.saved['gold'] >= cost
-                btn = pygame.Rect(px + pw - 150, y + 2, 120, 36)
-                btn_color = (60, 90, 50) if can_buy else (40, 30, 45)
-                pygame.draw.rect(surface, btn_color, btn, border_radius=5)
-                pygame.draw.rect(surface, C['gold'] if can_buy else (60,50,70), btn, 2, border_radius=5)
-                cost_txt = font_small.render(f"💰{cost}", True, C['gold'] if can_buy else (100,90,110))
-                surface.blit(cost_txt, (btn.centerx - cost_txt.get_width()//2, btn.centery - cost_txt.get_height()//2))
+                can = self.saved['gold'] >= cost
+                btn = pygame.Rect(px + self.pw - 140, y + 7, 110, 34)
+                pygame.draw.rect(surface, (60, 90, 50) if can else (40, 30, 45), btn, border_radius=5)
+                pygame.draw.rect(surface, C['gold'] if can else (60,50,70), btn, 2, border_radius=5)
+                ct = self.fnt.render(f"💰{cost}", True, C['gold'] if can else (100,90,110))
+                surface.blit(ct, (btn.centerx - ct.get_width()//2, btn.centery - ct.get_height()//2))
             else:
-                max_txt = font_small.render("已满级 ★", True, C['gold'])
-                surface.blit(max_txt, (px + pw - max_txt.get_width() - 30, y + 10))
+                surface.blit(self.fnt.render("已满级 ★", True, C['gold']), (px + self.pw - 130, y + 12))
 
-        surface.blit(font_small.render("ESC 关闭", True, (70,60,90)), (px + 30, py + ph - 30))
+        surface.blit(self.fnt_tip.render("ESC 关闭", True, (70, 60, 90)), (px + 20, py + self.ph - 28))
 
 
 # ──────────────────────────────────────
@@ -1748,8 +1744,12 @@ class ShopScreen:
 class DifficultyScreen:
     def __init__(self):
         self.active = False
-        self.selected = 1  # 默认普通
+        self.selected = 1
         self.timer = 0
+        self.pw, self.ph = 360, 380
+        self.px, self.py = W//2 - self.pw//2, H//2 - self.ph//2
+        self.fnt = pygame.font.Font(_zh_font_path, 20) if _zh_font_path else pygame.font.SysFont('microsoftyahei,tahoma', 20)
+        self.fnt_tip = pygame.font.Font(_zh_font_path, 18) if _zh_font_path else pygame.font.SysFont('microsoftyahei,tahoma', 18)
 
     def show(self):
         self.active = True
@@ -1758,32 +1758,27 @@ class DifficultyScreen:
 
     def handle_event(self, event):
         if not self.active: return None
+        px, py = self.px, self.py
         if event.type == pygame.KEYDOWN:
             if event.key in (pygame.K_UP, pygame.K_w):
-                self.selected = (self.selected - 1) % len(list(DIFFICULTIES.keys()))
+                self.selected = (self.selected - 1) % 4
             elif event.key in (pygame.K_DOWN, pygame.K_s):
-                self.selected = (self.selected + 1) % len(list(DIFFICULTIES.keys()))
+                self.selected = (self.selected + 1) % 4
             elif event.key in (pygame.K_RETURN, pygame.K_SPACE):
-                diff_key = list(DIFFICULTIES.keys())[self.selected]
                 global _current_diff
-                _current_diff = diff_key
-                self.active = False
-                return 'start'
+                _current_diff = list(DIFFICULTIES.keys())[self.selected]
+                self.active = False; return 'start'
             elif event.key == pygame.K_ESCAPE:
-                self.active = False
-                return 'back'
+                self.active = False; return 'back'
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            keys = list(DIFFICULTIES.keys())
-            for i, dk in enumerate(keys):
-                r = pygame.Rect(W//2-150, H//2-80 + i*60, 300, 45)
+            if pygame.Rect(px + self.pw - 34, py + 6, 26, 26).collidepoint(event.pos):
+                self.active = False; return 'back'
+            for i, dk in enumerate(DIFFICULTIES.keys()):
+                r = pygame.Rect(px + 20, py + 80 + i*60, self.pw - 40, 48)
                 if r.collidepoint(event.pos):
                     self.selected = i
                     _current_diff = dk
-                    self.active = False
-                    return 'start'
-            if pygame.Rect(W-75, 12, 60, 30).collidepoint(event.pos):
-                self.active = False
-                return 'back'
+                    self.active = False; return 'start'
         return None
 
     def update(self):
@@ -1791,38 +1786,35 @@ class DifficultyScreen:
 
     def draw(self, surface):
         if not self.active: return
+        px, py = self.px, self.py
         overlay = pygame.Surface((W, H), pygame.SRCALPHA)
         overlay.fill((5, 2, 15, 240))
         surface.blit(overlay, (0, 0))
 
-        title = font_large.render("🎯 选择难度", True, C['gold'])
-        surface.blit(title, (W//2 - title.get_width()//2, H//2 - 180))
-        sub = font_small.render("难度影响怪物强度和金币收益", True, C['text_dim'])
-        surface.blit(sub, (W//2 - sub.get_width()//2, H//2 - 125))
+        panel = pygame.Surface((self.pw, self.ph), pygame.SRCALPHA)
+        panel.fill((8, 4, 18, 240))
+        pygame.draw.rect(panel, (80, 60, 120, 200), panel.get_rect(), 2, 8)
+        surface.blit(panel, (px, py))
 
-        keys = list(DIFFICULTIES.keys())
-        for i, dk in enumerate(keys):
+        surface.blit(self.fnt.render("🎯 选择难度", True, C['gold']), (px + 14, py + 10))
+        surface.blit(self.fnt.render("✕", True, (180, 140, 160)), (px + self.pw - 28, py + 10))
+        surface.blit(self.fnt.render("难度影响强度和收益", True, C['text_dim']), (px + 20, py + 48))
+
+        for i, dk in enumerate(DIFFICULTIES.keys()):
             d = DIFFICULTIES[dk]
-            r = pygame.Rect(W//2-150, H//2-80 + i*60, 300, 45)
+            r = pygame.Rect(px + 20, py + 80 + i*60, self.pw - 40, 48)
             sel = i == self.selected
-            bg3 = (50, 35, 70, 200) if sel else (25, 18, 40, 180)
-            pygame.draw.rect(surface, bg3, r, border_radius=6)
+            bg2 = pygame.Surface((r.w, r.h), pygame.SRCALPHA)
+            bg2.fill((50, 35, 70, 200) if sel else (25, 18, 40, 180))
+            if sel: pygame.draw.rect(bg2, (*C['gold'][:3], 200), bg2.get_rect(), 2, 6)
+            surface.blit(bg2, (r.x, r.y))
+            clr = C['gold'] if sel else C['text']
+            surface.blit(self.fnt.render(dk, True, clr), (r.x + 14, r.y + 5))
+            surface.blit(self.fnt.render(d['desc'], True, C['text_dim']), (r.x + 14, r.y + 28))
             if sel:
-                pygame.draw.rect(surface, C['gold'], r, 2, border_radius=6)
-                arrow = font_med.render("▶", True, C['gold'])
-                surface.blit(arrow, (r.x-30, r.y+8))
-            else:
-                pygame.draw.rect(surface, (50,35,70), r, 1, border_radius=6)
-            name_txt = font_med.render(dk, True, C['gold'] if sel else C['text'])
-            surface.blit(name_txt, (r.x + 15, r.y + 8))
-            desc_txt = font_small.render(d['desc'], True, C['text_dim'])
-            surface.blit(desc_txt, (r.x + 15, r.y + 28))
-            if sel:
-                sel_txt = font_small.render("◀ 当前", True, C['gold'])
-                surface.blit(sel_txt, (r.right - sel_txt.get_width() - 8, r.y + 10))
+                surface.blit(self.fnt.render("▶", True, C['gold']), (r.right - 20, r.y + 12))
 
-        hint = font_small.render("↑↓ 选择 · Enter 确认 · ESC 返回", True, (70, 60, 90))
-        surface.blit(hint, (W//2 - hint.get_width()//2, H - 40))
+        surface.blit(self.fnt_tip.render("↑↓ Enter · ESC 返回", True, (70, 60, 90)), (px + 20, py + self.ph - 26))
 
 
 # ──────────────────────────────────────
