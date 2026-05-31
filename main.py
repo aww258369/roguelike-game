@@ -180,7 +180,7 @@ class Particle:
 TALENTS = [
     # (id, 名字, 描述, 稀有度, 效果函数, 最大堆叠)
     ('atk',    '攻击强化',   '伤害 +25%',       1, lambda p: setattr(p, 'dmg', p.dmg * 1.25), 5),
-    ('spd',    '攻速提升',   '攻速 +20%',       1, lambda p: setattr(p, 'atk_speed', p.atk_speed * 1.2), 4),
+    ('spd',    '攻速提升',   '攻速 +20%',       1, lambda p: setattr(p, 'atk_speed', p.atk_speed / 1.2), 4),
     ('move',   '移速提升',   '移速 +25%',       1, lambda p: setattr(p, 'move_speed', p.move_speed * 1.25), 3),
     ('hp_up',  '生命强化',   '最大生命 +40',    1, lambda p: p._set_max_hp(p.max_hp + 40), 5),
     ('armor',  '护甲提升',   '受伤 -15%',       1, lambda p: setattr(p, 'armor', p.armor * 1.15), 3),
