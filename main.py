@@ -1632,11 +1632,15 @@ class CheatMenu:
         self.scroll = 0
         self.timer = 0
         self.btn_rect = pygame.Rect(8, 8, 48, 22)
-        self.panel_w, self.panel_h = 220, 400
-        self.item_h = 32
+        self.panel_w, self.panel_h = 260, 420
+        self.item_h = 34
         self.visible = 9
         self.hovered_talent = -1
         self.hovered_talent_desc = ""
+        # 作弊菜单专用小字体
+        self.fnt = pygame.font.Font(_zh_font_path, 20) if _zh_font_path else pygame.font.SysFont('microsoftyahei,tahoma', 20)
+        self.fnt_bold = pygame.font.Font(_zh_font_path, 22) if _zh_font_path else pygame.font.SysFont('microsoftyahei,tahoma', 22)
+        self.fnt_tip = pygame.font.Font(_zh_font_path, 18) if _zh_font_path else pygame.font.SysFont('microsoftyahei,tahoma', 18)
 
     def toggle(self):
         self.open = not self.open
@@ -1644,7 +1648,7 @@ class CheatMenu:
 
     def _list_y(self, panel_top):
         """可视列表区域的起始 Y"""
-        return panel_top + 80
+        return panel_top + 76
 
     def _item_pos(self, idx, panel_top):
         """第 idx 个天赋/关卡的屏幕 Y 坐标"""
@@ -1743,7 +1747,7 @@ class CheatMenu:
         s.fill(bg_gear)
         pygame.draw.rect(s, (*cg[:3], 80), s.get_rect(), 1, 3)
         surface.blit(s, (self.btn_rect.x, self.btn_rect.y))
-        surface.blit(font_small.render("⚙", True, cg), (self.btn_rect.x + 3, self.btn_rect.y))
+        surface.blit(font_small.render("⚙", True, cg), (self.btn_rect.x + 3, self.btn_rect.y - 2))
         if not self.open:
             return
 
@@ -1753,22 +1757,22 @@ class CheatMenu:
         pygame.draw.rect(panel, (80, 60, 120, 200), panel.get_rect(), 2, 8)
         surface.blit(panel, (px, py))
 
-        surface.blit(font_small.render("⚡ 作弊", True, C['gold']), (px + 12, py + 8))
-        surface.blit(font_small.render("✕", True, (180, 140, 160)), (px + self.panel_w - 28, py + 8))
+        surface.blit(self.fnt_bold.render("⚡ 作弊", True, C['gold']), (px + 12, py + 8))
+        surface.blit(self.fnt.render("✕", True, (180, 140, 160)), (px + self.panel_w - 28, py + 9))
 
         # 标签
         for i, tn in enumerate(['天赋', '关卡']):
             tx = px + 16 + i * 96
             sel = i == self.tab
-            s2 = pygame.Surface((88, 28), pygame.SRCALPHA)
+            s2 = pygame.Surface((88, 26), pygame.SRCALPHA)
             s2.fill((50, 35, 70, 200) if sel else (25, 18, 40, 180))
             if sel: pygame.draw.rect(s2, (*C['gold'][:3], 200), s2.get_rect(), 1, 5)
             surface.blit(s2, (tx, py + 38))
-            t2 = font_small.render(tn, True, C['gold'] if sel else C['text_dim'])
+            t2 = self.fnt.render(tn, True, C['gold'] if sel else C['text_dim'])
             surface.blit(t2, (tx + 44 - t2.get_width()//2, py + 43))
 
-        cx, cy = px + 12, py + 80
-        list_w, list_h = self.panel_w - 24, self.panel_h - 106
+        cx, cy = px + 12, py + 76
+        list_w, list_h = self.panel_w - 24, self.panel_h - 100
 
         # === 天赋标签 ===
         if self.tab == 0 and game.player:
@@ -1782,24 +1786,23 @@ class CheatMenu:
                 pygame.draw.rect(bg2, (*tc[:3], 50), bg2.get_rect(), 1, 4)
                 surface.blit(bg2, (cx, y))
                 pygame.draw.circle(surface, tc, (cx + 12, y + self.item_h//2), 4)
-                surface.blit(font_small.render(t[1], True, (230, 230, 255)), (cx + 22, y + 6))
-                rt2 = font_small.render(tier_names_b.get(t[3], ''), True, tc)
-                surface.blit(rt2, (cx + list_w - rt2.get_width() - 6, y + 6))
+                surface.blit(self.fnt.render(t[1], True, (230, 230, 255)), (cx + 22, y + 7))
+                rt2 = self.fnt.render(tier_names_b.get(t[3], ''), True, tc)
+                surface.blit(rt2, (cx + list_w - rt2.get_width() - 6, y + 7))
 
             # 悬停提示
             if self.hovered_talent >= 0 and self.hovered_talent < len(TALENTS):
                 mx, my = pygame.mouse.get_pos()
                 desc = self.hovered_talent_desc
-                tip = font_small.render(desc, True, (255, 255, 200))
-                tw, th = tip.get_width() + 16, 30
-                # 提示框在鼠标右侧，超出屏幕则显示在左侧
+                tip = self.fnt.render(desc, True, (255, 255, 200))
+                tw, th = tip.get_width() + 14, 26
                 tx2 = min(mx + 16, W - tw - 10)
-                ty2 = my - 15
+                ty2 = my - 13
                 tip_surf = pygame.Surface((tw, th), pygame.SRCALPHA)
                 tip_surf.fill((20, 12, 35, 230))
                 pygame.draw.rect(tip_surf, C['gold'], tip_surf.get_rect(), 1, 4)
                 surface.blit(tip_surf, (tx2, ty2))
-                surface.blit(tip, (tx2 + 8, ty2 + 6))
+                surface.blit(tip, (tx2 + 7, ty2 + 4))
 
         # === 关卡标签 ===
         elif self.tab == 1 and game.wave_mgr:
@@ -1814,10 +1817,10 @@ class CheatMenu:
                 if is_cur: pygame.draw.rect(bg2, (*C['gold'][:3], 150), bg2.get_rect(), 1, 4)
                 surface.blit(bg2, (cx, y))
                 mk = "👑" if w % 10 == 0 else "⭐" if w % 5 == 0 else "  "
-                wt = font_small.render(f"{mk} 第 {w} 关", True, C['gold'] if is_cur else C['text'])
-                surface.blit(wt, (cx + 12, y + 6))
+                wt = self.fnt.render(f"{mk} 第 {w} 关", True, C['gold'] if is_cur else C['text'])
+                surface.blit(wt, (cx + 12, y + 7))
                 if is_cur:
-                    surface.blit(font_small.render("◀", True, C['gold']), (cx + list_w - 18, y + 6))
+                    surface.blit(self.fnt.render("◀", True, C['gold']), (cx + list_w - 18, y + 7))
 
         # 滚动条
         if self._max_scroll() > 0:
@@ -1827,7 +1830,7 @@ class CheatMenu:
             bar.fill((120, 100, 160, 150))
             surface.blit(bar, (px + self.panel_w - 11, int(bar_y)))
 
-        surface.blit(font_small.render("滚轮滚动 · F1 开关", True, (70, 60, 90)),
+        surface.blit(self.fnt_tip.render("滚轮 · F1 开关", True, (70, 60, 90)),
                      (px + 12, py + self.panel_h - 22))
 
 
