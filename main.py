@@ -2221,6 +2221,93 @@ class CheatMenu:
 
 
 # ──────────────────────────────────────
+#  暂停菜单
+# ──────────────────────────────────────
+class PauseMenu:
+    def __init__(self):
+        self.active = False
+        self.selected = 0
+        self.options = [("返回游戏", "resume"), ("返回菜单", "quit")]
+        self.fnt = pygame.font.Font(_zh_font_path, 24) if _zh_font_path else pygame.font.SysFont('microsoftyahei,tahoma', 24)
+
+    def show(self):
+        self.active = True
+        self.selected = 0
+
+    def hide(self):
+        self.active = False
+
+    def handle_event(self, event, game):
+        if not self.active: return False
+        if event.type == pygame.KEYDOWN:
+            if event.key in (pygame.K_UP, pygame.K_w):
+                self.selected = (self.selected - 1) % 2; return True
+            if event.key in (pygame.K_DOWN, pygame.K_s):
+                self.selected = (self.selected + 1) % 2; return True
+            if event.key in (pygame.K_RETURN, pygame.K_SPACE):
+                if self.selected == 0:  # 返回游戏
+                    self.active = False; return True
+                else:  # 返回菜单
+                    self.active = False
+                    game._save_gold()
+                    game.state = 'menu'
+                    game.main_menu.active = True
+                    if game.player:
+                        game.player.move_x = 0
+                        game.player.move_y = 0
+                    return True
+            if event.key == pygame.K_ESCAPE:
+                self.active = False; return True
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            mx, my = event.pos
+            bx, by = W//2 - 100, H//2 - 10
+            for i in range(2):
+                r = pygame.Rect(bx, by + i*55, 200, 42)
+                if r.collidepoint(mx, my):
+                    self.selected = i
+                    if i == 0:
+                        self.active = False
+                    else:
+                        self.active = False
+                        game._save_gold()
+                        game.state = 'menu'
+                        game.main_menu.active = True
+                        if game.player:
+                            game.player.move_x = 0
+                            game.player.move_y = 0
+                    return True
+        return False
+
+    def draw(self, surface):
+        if not self.active: return
+        overlay = pygame.Surface((W, H), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 180))
+        surface.blit(overlay, (0, 0))
+
+        bx, by = W//2 - 100, H//2 - 60
+        panel = pygame.Surface((240, 160), pygame.SRCALPHA)
+        panel.fill((8, 4, 18, 240))
+        pygame.draw.rect(panel, (80, 60, 120, 200), panel.get_rect(), 2, 8)
+        surface.blit(panel, (bx - 20, by))
+
+        title = self.fnt.render("⏸ 暂停", True, C['gold'])
+        surface.blit(title, (W//2 - title.get_width()//2, by + 15))
+
+        for i, (txt, _) in enumerate(self.options):
+            r = pygame.Rect(bx, by + 50 + i*50, 200, 38)
+            sel = i == self.selected
+            bg2 = pygame.Surface((r.w, r.h), pygame.SRCALPHA)
+            bg2.fill((50, 35, 70, 200) if sel else (25, 18, 40, 180))
+            if sel: pygame.draw.rect(bg2, (*C['gold'][:3], 200), bg2.get_rect(), 2, 6)
+            surface.blit(bg2, (r.x, r.y))
+            clr = C['gold'] if sel else C['text']
+            t2 = self.fnt.render(txt, True, clr)
+            surface.blit(t2, (r.centerx - t2.get_width()//2, r.centery - t2.get_height()//2))
+            if sel:
+                surface.blit(self.fnt.render("▶", True, C['gold']), (r.x - 24, r.y + 6))
+
+
+# ──────────────────────────────────────
 #  游戏主类
 # ──────────────────────────────────────
 class Game:
@@ -2249,6 +2336,7 @@ class Game:
         self.victory_screen = VictoryScreen()
         self.difficulty_screen = DifficultyScreen()
         self.shop_screen = ShopScreen()
+        self.pause_menu = PauseMenu()
         self.gold = 0
         self._last_vx = 0
         self._last_vy = 0
@@ -2375,6 +2463,10 @@ class Game:
         # ── 游戏结束 ──
         if self.state == 'game_over':
             self.game_over.update()
+            return
+
+        # ── 暂停菜单 ──
+        if self.pause_menu.active:
             return
 
         if self.paused and self.talent_panel.active:
@@ -2716,6 +2808,9 @@ class Game:
         # 作弊菜单（最上层绘制）
         self.cheat_menu.draw(screen, self)
 
+        # 暂停菜单（最上层）
+        self.pause_menu.draw(screen)
+
         draw_magic_wand(screen)
         pygame.display.flip()
 
@@ -2774,14 +2869,21 @@ class Game:
             if self.cheat_menu.handle_event(event, self):
                 return
 
-        # ── 游戏中按键处理（仅处理单次按键，移动用 get_pressed）──
+        # ── 游戏中按键处理 ──
         if self.state == 'playing' and self.player:
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                self._save_gold()
-                self.state = 'menu'
-                self.main_menu.active = True
-                self.player.move_x = 0
-                self.player.move_y = 0
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    if self.pause_menu.active:
+                        self.pause_menu.hide()
+                    else:
+                        self.pause_menu.show()
+                    self.player.move_x = 0
+                    self.player.move_y = 0
+                    return
+
+            # 暂停菜单事件（拦截所有操作）
+            if self.pause_menu.active:
+                self.pause_menu.handle_event(event, self)
                 return
 
         # ── 游戏结束按键 ──
